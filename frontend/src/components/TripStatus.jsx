@@ -31,7 +31,7 @@ export default function TripStatus({
           <span>km</span>
         </div>
         <div className="target-threshold-text">
-          Alert sounds at <strong>≤ {alertDistance} km</strong>
+          Alert sounds at <strong>≤ {alertDistance >= 1000 ? `${(alertDistance / 1000).toFixed(1).replace(/\.0$/, '')} km` : `${alertDistance} m`}</strong>
         </div>
       </div>
 
