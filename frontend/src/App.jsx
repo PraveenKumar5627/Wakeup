@@ -71,7 +71,7 @@ export default function App() {
       }
     } catch (err) {
       console.error('Backend sync failed:', err);
-      setBackendError(`Cannot reach backend: ${err.message}. Is FastAPI running on port 8000?`);
+      setBackendError(`Backend request failed: ${err.message}`);
     }
   };
 
