@@ -16,8 +16,9 @@ export default function App() {
     lng: 80.2707,
   });
 
-  // Alert distance threshold (km): default 3 km
-  const [alertDistance, setAlertDistance] = useState(3);
+  // Alert distance threshold stored in METERS (slider uses meters).
+  // Default: 3000 m = 3 km. Convert to km before sending to backend.
+  const [alertDistance, setAlertDistance] = useState(3000);
 
   // Trip state
   const [isTripActive, setIsTripActive] = useState(false);
@@ -50,15 +51,17 @@ export default function App() {
   }, []);
 
   // 2. Synchronize GPS tracking with Backend
-  const syncLocationWithBackend = async (lat, lng, dest, threshold) => {
+  const syncLocationWithBackend = async (lat, lng, dest, thresholdMeters) => {
     try {
       setBackendError(null);
+      // Convert meters → km for the backend (backend expects km)
+      const alertDistanceKm = thresholdMeters / 1000;
       const result = await calculateDistance({
         currentLat: lat,
         currentLng: lng,
         destLat: dest.lat,
         destLng: dest.lng,
-        alertDistance: threshold,
+        alertDistance: alertDistanceKm,
       });
 
       setRemainingDistance(result.distance_km);
