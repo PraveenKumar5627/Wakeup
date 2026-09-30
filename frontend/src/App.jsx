@@ -153,8 +153,8 @@ export default function App() {
         // Phase 2: Switch to continuous high-accuracy satellite GPS tracking
         watchIdRef.current = navigator.geolocation.watchPosition(onSuccess, onError, {
           enableHighAccuracy: true,
-          maximumAge: 10000,
-          timeout: 10000,
+          maximumAge: 15000,
+          timeout: 20000,
         });
       },
       (error) => {
@@ -165,14 +165,31 @@ export default function App() {
           return;
         }
         
-        // If fast fix fails (e.g. timeout), start high-accuracy tracking anyway
-        watchIdRef.current = navigator.geolocation.watchPosition(onSuccess, onError, {
-          enableHighAccuracy: true,
-          maximumAge: 10000,
-          timeout: 10000,
-        });
+        // Timed out — user may have just tapped "Turn On" in the Android system dialog.
+        // Retry once automatically with high-accuracy GPS.
+        setGpsError('📡 Getting your location... almost there!');
+        navigator.geolocation.getCurrentPosition(
+          (retryPos) => {
+            onSuccess(retryPos);
+            watchIdRef.current = navigator.geolocation.watchPosition(onSuccess, onError, {
+              enableHighAccuracy: true,
+              maximumAge: 15000,
+              timeout: 20000,
+            });
+          },
+          (retryError) => {
+            onError(retryError);
+            // Still start watching in background in case GPS wakes up
+            watchIdRef.current = navigator.geolocation.watchPosition(onSuccess, onError, {
+              enableHighAccuracy: true,
+              maximumAge: 15000,
+              timeout: 20000,
+            });
+          },
+          { enableHighAccuracy: true, timeout: 20000, maximumAge: 0 }
+        );
       },
-      { enableHighAccuracy: false, timeout: 5000, maximumAge: Infinity }
+    { enableHighAccuracy: false, timeout: 30000, maximumAge: Infinity }
     );
   };
 
