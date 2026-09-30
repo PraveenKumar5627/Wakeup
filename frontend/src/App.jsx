@@ -92,42 +92,61 @@ export default function App() {
       return;
     }
 
-    // Options for high accuracy GPS tracking suitable for mobile devices
-    const geoOptions = {
-      enableHighAccuracy: true,
-      maximumAge: 5000,
-      timeout: 15000,
-    };
-
     // Callback on successful GPS position acquisition
     const onSuccess = (position) => {
       const { latitude, longitude } = position.coords;
       setCurrentLocation({ lat: latitude, lng: longitude });
-      setGpsError(null);
+      setGpsError(null); // Clear any previous timeout warning
       syncLocationWithBackend(latitude, longitude, destination, alertDistance);
     };
 
     // Callback on GPS permission denial or location acquisition failure
     const onError = (error) => {
       console.warn('Geolocation error:', error);
-      let errorMsg = 'Unable to retrieve your location.';
       switch (error.code) {
         case error.PERMISSION_DENIED:
-          errorMsg = 'GPS permission was denied. Please allow location access in your browser settings, or use the Desktop Simulator below.';
+          setGpsError('GPS permission was denied. Please allow location access in your browser settings, or use the Desktop Simulator below.');
           break;
         case error.POSITION_UNAVAILABLE:
-          errorMsg = 'Location information is currently unavailable. Waiting for GPS fix...';
+          // Non-fatal: satellite signal temporarily lost, keep watching
+          setGpsError('Searching for GPS signal... Please stay in an open area.');
           break;
         case error.TIMEOUT:
-          errorMsg = 'Location request timed out. Retrying GPS...';
+          // Non-fatal: GPS cold-start on mobile takes time — show a soft warning
+          // watchPosition will keep retrying automatically with the options below
+          setGpsError('Acquiring GPS fix... This can take up to 30 seconds on first use. Please wait.');
           break;
+        default:
+          setGpsError('Unable to retrieve your location. Please check GPS settings.');
       }
-      setGpsError(errorMsg);
+    };
+
+    // Phase 1: Get a quick initial fix using network/cell-tower location (low accuracy, fast)
+    // This gives instant feedback while the real GPS satellite warms up
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        onSuccess(position);
+        setGpsError(null);
+      },
+      () => {
+        // Phase 1 failed (no network location) — that's fine, Phase 2 will handle it
+        setGpsError('Acquiring GPS fix... Please wait.');
+      },
+      { enableHighAccuracy: false, timeout: 5000, maximumAge: 60000 }
+    );
+
+    // Phase 2: High-accuracy continuous tracking (satellite GPS)
+    // Large timeout + maximumAge so watchPosition retries gracefully on mobile
+    const geoOptions = {
+      enableHighAccuracy: true,
+      maximumAge: 10000,   // Accept a cached position up to 10 seconds old
+      timeout: 30000,      // Give GPS 30 seconds to get a satellite fix
     };
 
     // Begin active continuous watching
     watchIdRef.current = navigator.geolocation.watchPosition(onSuccess, onError, geoOptions);
   };
+
 
   // 4. Stop Trip
   const handleStopTrip = () => {
