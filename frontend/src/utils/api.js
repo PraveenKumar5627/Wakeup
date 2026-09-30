@@ -2,12 +2,12 @@
  * API client to communicate with the FastAPI backend.
  */
 
-// Default backend URL: can be overridden via environment or localStorage if testing on mobile over Wi-Fi
-export const BACKEND_URL =
-  import.meta.env.VITE_BACKEND_URL ||
-  (typeof window !== 'undefined' && window.location.hostname !== 'localhost'
-    ? `http://${window.location.hostname}:8000`
-    : 'http://localhost:8000');
+// Backend URL is set via VITE_API_BASE_URL environment variable.
+// In production (Vercel), set VITE_API_BASE_URL=https://your-app.onrender.com in the Vercel dashboard.
+// Fallback to localhost only for local development.
+export const BACKEND_URL = (
+  import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000'
+).replace(/\/+$/, '');
 
 /**
  * Sends current location and destination coordinates to the FastAPI backend
