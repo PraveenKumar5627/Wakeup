@@ -26,7 +26,12 @@ app = FastAPI(
 # -----------------------------------------------------------------------------
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["https://wakeup-ashy.vercel.app"],  # Allows all origins in development
+    allow_origins=[
+        "https://wakeup-ashy.vercel.app",   # Vercel production
+        "http://localhost:5173",             # Vite local dev
+        "http://localhost:3000",             # Alt local dev port
+        "http://127.0.0.1:5173",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
