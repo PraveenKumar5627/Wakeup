@@ -79,7 +79,7 @@ export default function App() {
   };
 
   // 3. Start Trip: request GPS and begin tracking
-  const handleStartTrip = () => {
+  const handleStartTrip = async () => {
     if (!destination) {
       alert('Please select or search for a destination first.');
       return;
@@ -93,6 +93,27 @@ export default function App() {
     if (!('geolocation' in navigator)) {
       setGpsError('Geolocation is not supported by your browser. Please use the simulator below.');
       return;
+    }
+
+    // Check current permission state before requesting GPS
+    if (navigator.permissions) {
+      try {
+        const perm = await navigator.permissions.query({ name: 'geolocation' });
+        if (perm.state === 'denied') {
+          setGpsError('❌ Location blocked. Fix: tap the 🔒 icon in your browser address bar → Site settings → Location → Allow. Then try again.');
+          setIsTripActive(false);
+          return;
+        }
+        if (perm.state === 'prompt') {
+          setGpsError('📍 Tap "Allow" on the popup to share your location.');
+        } else {
+          setGpsError('📡 Acquiring your GPS location...');
+        }
+      } catch {
+        setGpsError('📍 Please allow location access if prompted.');
+      }
+    } else {
+      setGpsError('📍 Please allow location access if prompted.');
     }
 
     // Callback on successful GPS position acquisition
@@ -122,10 +143,9 @@ export default function App() {
       }
     };
 
-    setGpsError('Locating you... Please allow location access if prompted.');
-
     // Phase 1: Fast initial fix using network/cell-tower location (low accuracy)
     // This triggers the permission dialog and gets a location in 1-2 seconds.
+
     navigator.geolocation.getCurrentPosition(
       (position) => {
         onSuccess(position);
@@ -138,9 +158,10 @@ export default function App() {
         });
       },
       (error) => {
-        // If permission was denied, stop here.
+        // If permission was denied, stop trip entirely
         if (error.code === error.PERMISSION_DENIED) {
           onError(error);
+          setIsTripActive(false);
           return;
         }
         
