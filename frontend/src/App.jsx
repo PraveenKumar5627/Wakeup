@@ -4,6 +4,7 @@ import DestinationSearch from './components/DestinationSearch';
 import AlertDistance from './components/AlertDistance';
 import TripStatus from './components/TripStatus';
 import AlarmModal from './components/AlarmModal';
+import LocationPermissionDialog from './components/LocationPermissionDialog';
 import SimulatorControl from './components/SimulatorControl';
 import { calculateDistance, checkBackendHealth } from './utils/api';
 import { alarmAudio } from './utils/audioAlarm';
@@ -29,6 +30,13 @@ export default function App() {
   const [backendError, setBackendError] = useState(null);
   const [isBackendOnline, setIsBackendOnline] = useState(false);
 
+  // Location Permission State Machine:
+  // 'idle' | 'requesting' | 'granted' | 'denied' | 'unavailable' | 'cancelled'
+  const [locationStatus, setLocationStatus] = useState('idle');
+  const [isLocationDialogOpen, setIsLocationDialogOpen] = useState(false);
+  const [locationErrorCode, setLocationErrorCode] = useState(null);
+  const [locationErrorMessage, setLocationErrorMessage] = useState('');
+
   // Alarm modal & audio state
   const [isAlarmActive, setIsAlarmActive] = useState(false);
 
@@ -36,17 +44,14 @@ export default function App() {
   const [isSimulating, setIsSimulating] = useState(false);
   const simOffsetRef = useRef(0.1); // ~11 km away initially
 
-  // Watch position reference & lifecycle tracking
+  // Watch position reference for continuous live GPS tracking
   const watchIdRef = useRef(null);
-  const isTripActiveRef = useRef(false);
-  const hasReceivedFirstFixRef = useRef(false);
-  const retryTimersRef = useRef([]);
 
-  // Clear any scheduled retry timers
-  const clearRetryTimers = () => {
-    if (retryTimersRef.current && retryTimersRef.current.length > 0) {
-      retryTimersRef.current.forEach((id) => clearTimeout(id));
-      retryTimersRef.current = [];
+  // Helper to completely stop active geolocation watcher
+  const stopAllTracking = () => {
+    if (watchIdRef.current !== null) {
+      navigator.geolocation.clearWatch(watchIdRef.current);
+      watchIdRef.current = null;
     }
   };
 
@@ -89,167 +94,205 @@ export default function App() {
     }
   };
 
-  // 3. Start Trip: request GPS and begin tracking
+  // 3. Continuous background watcher during an active trip
+  const startLiveWatch = () => {
+    stopAllTracking();
+
+    const onWatchSuccess = (position) => {
+      const { latitude, longitude } = position.coords;
+      setCurrentLocation({ lat: latitude, lng: longitude });
+      setGpsError(null);
+      syncLocationWithBackend(latitude, longitude, destination, alertDistance);
+    };
+
+    const onWatchError = (error) => {
+      console.warn('Live tracking warning:', error);
+      // Ignore silent timeouts during active transit
+      if (error.code === error.TIMEOUT) return;
+      if (error.code === error.POSITION_UNAVAILABLE) {
+        setGpsError('📡 Searching for GPS satellite signal...');
+      }
+    };
+
+    watchIdRef.current = navigator.geolocation.watchPosition(
+      onWatchSuccess,
+      onWatchError,
+      {
+        enableHighAccuracy: true,
+        timeout: 20000,
+        maximumAge: 5000,
+      }
+    );
+  };
+
+  // 4. Start Trip: request GPS and begin tracking
   const handleStartTrip = async () => {
     if (!destination) {
       alert('Please select or search for a destination first.');
       return;
     }
 
-    setGpsError(null);
-    setBackendError(null);
-    setIsTripActive(true);
-    isTripActiveRef.current = true;
-    hasReceivedFirstFixRef.current = false;
-    setIsSimulating(false);
-
-    clearRetryTimers();
-    if (watchIdRef.current !== null) {
-      navigator.geolocation.clearWatch(watchIdRef.current);
-      watchIdRef.current = null;
-    }
-
-    if (!('geolocation' in navigator)) {
-      setGpsError('Geolocation is not supported by your browser. Please use the simulator below.');
-      setIsTripActive(false);
-      isTripActiveRef.current = false;
+    // Prevent duplicate concurrent requests if already requesting
+    if (locationStatus === 'requesting') {
       return;
     }
 
-    // Set reassuring status message
-    setGpsError('📡 Accessing location... If your phone asks for Location Accuracy, please tap "Turn on".');
+    // Reset error states and stop any existing tracker
+    stopAllTracking();
+    setGpsError(null);
+    setBackendError(null);
+    setIsTripActive(false);
+    setIsSimulating(false);
+    setLocationErrorCode(null);
+    setLocationErrorMessage('');
 
-    // Check browser permission state if supported
-    if (navigator.permissions) {
+    // Check browser geolocation support
+    if (!('geolocation' in navigator)) {
+      setLocationStatus('unavailable');
+      setLocationErrorCode('POSITION_UNAVAILABLE');
+      setLocationErrorMessage('Geolocation is not supported by your browser. Please use the simulator below.');
+      setIsLocationDialogOpen(true);
+      return;
+    }
+
+    // Check browser permissions state if supported
+    if (navigator.permissions && navigator.permissions.query) {
       try {
         const perm = await navigator.permissions.query({ name: 'geolocation' });
         if (perm.state === 'denied') {
-          setGpsError('❌ Location blocked. Fix: tap the 🔒 icon in your browser address bar → Site settings → Location → Allow. Then tap START TRIP again.');
-          setIsTripActive(false);
-          isTripActiveRef.current = false;
+          setLocationStatus('denied');
+          setLocationErrorCode('PERMISSION_DENIED');
+          setLocationErrorMessage(
+            'Browser location permission is blocked. Tap the 🔒 lock icon in your address bar to allow location.'
+          );
+          setIsLocationDialogOpen(true);
           return;
         }
       } catch {
-        // Permissions API unsupported or failed, continue to geolocation request
+        // Permissions API unsupported or failed, continue directly to request
       }
     }
 
-    // Callback on successful GPS position acquisition
-    const onSuccess = (position) => {
-      if (!isTripActiveRef.current) return;
-      hasReceivedFirstFixRef.current = true;
-      clearRetryTimers();
+    // Transition state to 'requesting'
+    setLocationStatus('requesting');
+    setGpsError('📡 Requesting location... Tap "Allow" or "Turn on" if your device asks for location.');
 
-      const { latitude, longitude } = position.coords;
-      setCurrentLocation({ lat: latitude, lng: longitude });
-      setGpsError(null); // Clear loading / warning messages
-      syncLocationWithBackend(latitude, longitude, destination, alertDistance);
-    };
-
-    // Callback on GPS permission denial or location acquisition failure
-    const onError = (error) => {
-      console.warn('Geolocation error:', error);
-      if (!isTripActiveRef.current) return;
-
-      switch (error.code) {
-        case error.PERMISSION_DENIED:
-          clearRetryTimers();
-          if (watchIdRef.current !== null) {
-            navigator.geolocation.clearWatch(watchIdRef.current);
-            watchIdRef.current = null;
-          }
-          setGpsError('❌ Location access was denied. Please allow location permissions in your browser or phone settings.');
-          setIsTripActive(false);
-          isTripActiveRef.current = false;
-          break;
-
-        case error.POSITION_UNAVAILABLE:
-          if (!hasReceivedFirstFixRef.current) {
-            // User likely tapped "No, thanks" on the Android system dialog or GPS is disabled
-            clearRetryTimers();
-            if (watchIdRef.current !== null) {
-              navigator.geolocation.clearWatch(watchIdRef.current);
-              watchIdRef.current = null;
-            }
-            setGpsError('⚠️ Location not enabled. Please tap "Turn on" when prompted, or enable Location in your phone settings.');
-            setIsTripActive(false);
-            isTripActiveRef.current = false;
-          } else {
-            setGpsError('📡 Reconnecting to GPS signal...');
-          }
-          break;
-
-        case error.TIMEOUT:
-          if (!hasReceivedFirstFixRef.current) {
-            // Waiting for user to tap "Turn on" or for satellites to acquire
-            setGpsError('📡 Connecting to GPS... If prompted, please tap "Turn on" to enable Location Accuracy.');
-          }
-          break;
-
-        default:
-          if (!hasReceivedFirstFixRef.current) {
-            setGpsError('Unable to retrieve your location. Please ensure location is enabled.');
-          }
-      }
-    };
-
-    // 1. Immediately register continuous watch tracking with high accuracy.
-    // When the user taps "Turn on" on the Android dialog, watchPosition receives the fix right away!
-    const watchOptions = {
-      enableHighAccuracy: true,
-      maximumAge: 5000,
-      timeout: 20000,
-    };
-    watchIdRef.current = navigator.geolocation.watchPosition(onSuccess, onError, watchOptions);
-
-    // 2. Immediate single-shot request to grab any cached/quick fix
+    // Execute a single, non-repeating location request.
+    // CRITICAL: We do NOT use automatic background timers, loops, or pokes.
+    // If the user rejects or taps "No, thanks", it will NOT prompt again.
     navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        onSuccess(pos);
-      },
-      (err) => {
-        // Soft error, watchPosition will handle ongoing tracking
-        console.log('Initial getCurrentPosition probe:', err.message);
-      },
-      { enableHighAccuracy: true, maximumAge: 10000, timeout: 8000 }
-    );
+      (position) => {
+        // SUCCESS: Coordinates successfully acquired
+        const { latitude, longitude } = position.coords;
+        setLocationStatus('granted');
+        setIsLocationDialogOpen(false);
+        setGpsError(null);
+        setCurrentLocation({ lat: latitude, lng: longitude });
+        setIsTripActive(true);
 
-    // 3. Proactive retries: when the user taps "Turn on", the hardware needs 1-3 seconds
-    // to warm up. A quick getCurrentPosition probe at 4s and 8s guarantees fast pickup.
-    const schedulePoke = (delayMs) => {
-      const timerId = setTimeout(() => {
-        if (!hasReceivedFirstFixRef.current && isTripActiveRef.current) {
-          navigator.geolocation.getCurrentPosition(
-            onSuccess,
-            () => {},
-            { enableHighAccuracy: true, maximumAge: 0, timeout: 8000 }
-          );
+        // Sync with backend API
+        syncLocationWithBackend(latitude, longitude, destination, alertDistance);
+
+        // Start continuous live tracking for transit updates
+        startLiveWatch();
+      },
+      (error) => {
+        // REJECTION OR ERROR: User tapped "No, thanks", "Block", or GPS is disabled
+        console.warn('Geolocation request failed:', error);
+        stopAllTracking();
+        setIsTripActive(false);
+        setGpsError(null);
+
+        switch (error.code) {
+          case error.PERMISSION_DENIED: // Code 1
+            setLocationStatus('denied');
+            setLocationErrorCode('PERMISSION_DENIED');
+            setLocationErrorMessage(
+              'Location permission was denied in your browser settings.'
+            );
+            setIsLocationDialogOpen(true);
+            break;
+
+          case error.POSITION_UNAVAILABLE: // Code 2 (Android "No, thanks" or GPS disabled)
+            setLocationStatus('unavailable');
+            setLocationErrorCode('POSITION_UNAVAILABLE');
+            setLocationErrorMessage(
+              'Device location is turned off or was not enabled in settings.'
+            );
+            setIsLocationDialogOpen(true);
+            break;
+
+          case error.TIMEOUT: // Code 3
+            setLocationStatus('unavailable');
+            setLocationErrorCode('TIMEOUT');
+            setLocationErrorMessage(
+              'Location request timed out. Please check your GPS signal and try again.'
+            );
+            setIsLocationDialogOpen(true);
+            break;
+
+          default:
+            setLocationStatus('unavailable');
+            setLocationErrorCode('POSITION_UNAVAILABLE');
+            setLocationErrorMessage(
+              error.message || 'Unable to retrieve location. Please check device location settings.'
+            );
+            setIsLocationDialogOpen(true);
+            break;
         }
-      }, delayMs);
-      retryTimersRef.current.push(timerId);
-    };
-
-    schedulePoke(4000);
-    schedulePoke(8000);
+      },
+      {
+        enableHighAccuracy: true,
+        timeout: 15000,
+        maximumAge: 0,
+      }
+    );
   };
 
-  // 4. Stop Trip
-  const handleStopTrip = () => {
-    isTripActiveRef.current = false;
-    hasReceivedFirstFixRef.current = false;
-    clearRetryTimers();
+  // 5. User Action: Try Again from custom dialog
+  const handleTryAgain = () => {
+    setIsLocationDialogOpen(false);
+    handleStartTrip();
+  };
 
-    if (watchIdRef.current !== null) {
-      navigator.geolocation.clearWatch(watchIdRef.current);
-      watchIdRef.current = null;
+  // 6. User Action: Enter Destination Manually from custom dialog
+  const handleEnterDestinationManually = () => {
+    setIsLocationDialogOpen(false);
+    setLocationStatus('cancelled');
+    stopAllTracking();
+    setIsTripActive(false);
+    setGpsError(null);
+
+    // Scroll to destination search container smoothly
+    const searchEl = document.querySelector('.search-input') || document.querySelector('.destination-card');
+    if (searchEl) {
+      searchEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      if (typeof searchEl.focus === 'function') {
+        searchEl.focus();
+      }
     }
+  };
+
+  // 7. User Action: Cancel from custom dialog (stops attempt and does not reopen)
+  const handleCancelLocationDialog = () => {
+    setIsLocationDialogOpen(false);
+    setLocationStatus('cancelled');
+    stopAllTracking();
+    setIsTripActive(false);
+    setGpsError(null);
+  };
+
+  // 8. Stop Trip
+  const handleStopTrip = () => {
+    stopAllTracking();
     setIsTripActive(false);
     setIsSimulating(false);
+    setLocationStatus('idle');
     setGpsError(null);
     handleStopAlarm();
   };
 
-  // 5. Stop Alarm
+  // 9. Stop Alarm
   const handleStopAlarm = () => {
     setIsAlarmActive(false);
     alarmAudio.stopAlarm();
@@ -288,10 +331,7 @@ export default function App() {
   // Cleanup on unmount
   useEffect(() => {
     return () => {
-      clearRetryTimers();
-      if (watchIdRef.current !== null) {
-        navigator.geolocation.clearWatch(watchIdRef.current);
-      }
+      stopAllTracking();
       alarmAudio.stopAlarm();
     };
   }, []);
@@ -337,10 +377,19 @@ export default function App() {
                 type="button"
                 className="btn-primary"
                 onClick={handleStartTrip}
-                disabled={!destination}
+                disabled={!destination || locationStatus === 'requesting'}
               >
-                <span>🚀</span>
-                <span>START TRIP</span>
+                {locationStatus === 'requesting' ? (
+                  <>
+                    <span className="pulse-dot" style={{ backgroundColor: '#fff' }} />
+                    <span>ACQUIRING LOCATION...</span>
+                  </>
+                ) : (
+                  <>
+                    <span>🚀</span>
+                    <span>START TRIP</span>
+                  </>
+                )}
               </button>
             </>
           ) : (
@@ -394,6 +443,17 @@ export default function App() {
         alertDistance={alertDistance}
         destinationName={destination?.name}
         onStopAlarm={handleStopAlarm}
+      />
+
+      {/* User-Friendly Location Permission & Settings Modal */}
+      <LocationPermissionDialog
+        isOpen={isLocationDialogOpen}
+        status={locationStatus}
+        errorCode={locationErrorCode}
+        errorMessage={locationErrorMessage}
+        onTryAgain={handleTryAgain}
+        onEnterDestinationManually={handleEnterDestinationManually}
+        onCancel={handleCancelLocationDialog}
       />
 
       <footer className="app-footer">

@@ -962,3 +962,277 @@ body {
   color: var(--text-dim);
   padding: 0 2px;
 }
+
+/* ==========================================================================
+   Location Permission & Settings Dialog Modal
+   ========================================================================== */
+.location-dialog-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(11, 15, 25, 0.88);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  z-index: 99998;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: clamp(0.75rem, 3vw, 1.5rem);
+  animation: fadeIn 0.2s ease-out;
+  overflow-y: auto;
+}
+
+.location-dialog-card {
+  width: 100%;
+  max-width: 500px;
+  background: linear-gradient(180deg, #17223b 0%, #0d1527 100%);
+  border: 1px solid rgba(56, 189, 248, 0.3);
+  border-radius: var(--radius-lg);
+  padding: clamp(1.2rem, 3.5vw, 1.8rem);
+  box-shadow: 0 20px 50px -10px rgba(0, 0, 0, 0.7), 0 0 30px rgba(56, 189, 248, 0.12);
+  color: var(--text-main);
+  margin: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 1.1rem;
+}
+
+.location-dialog-header {
+  display: flex;
+  align-items: center;
+  gap: 0.9rem;
+}
+
+.location-dialog-icon-wrapper {
+  position: relative;
+  width: 48px;
+  height: 48px;
+  border-radius: var(--radius-md);
+  background: rgba(56, 189, 248, 0.15);
+  border: 1px solid rgba(56, 189, 248, 0.35);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.location-dialog-icon {
+  font-size: 1.6rem;
+  z-index: 2;
+}
+
+.location-dialog-pulse {
+  position: absolute;
+  inset: -4px;
+  border-radius: inherit;
+  border: 1px solid var(--accent-blue);
+  opacity: 0.5;
+  animation: pulse 2s infinite ease-out;
+}
+
+.location-dialog-title {
+  font-size: clamp(1.15rem, 3vw, 1.35rem);
+  font-weight: 800;
+  color: var(--text-main);
+  letter-spacing: -0.01em;
+  line-height: 1.2;
+}
+
+.location-status-pill {
+  display: inline-block;
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--accent-amber);
+  background: rgba(245, 158, 11, 0.12);
+  border: 1px solid rgba(245, 158, 11, 0.3);
+  padding: 0.2rem 0.55rem;
+  border-radius: var(--radius-full);
+  margin-top: 0.25rem;
+}
+
+.location-dialog-primary-msg {
+  font-size: clamp(0.88rem, 2.2vw, 0.96rem);
+  line-height: 1.5;
+  color: #e2e8f0;
+  background: rgba(15, 23, 42, 0.6);
+  padding: 0.85rem 1rem;
+  border-radius: var(--radius-md);
+  border-left: 3px solid var(--accent-blue);
+}
+
+.location-dialog-error-hint {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  background: rgba(30, 41, 59, 0.45);
+  padding: 0.6rem 0.8rem;
+  border-radius: var(--radius-sm);
+  border: 1px dashed rgba(148, 163, 184, 0.25);
+  line-height: 1.4;
+}
+
+.location-dialog-error-hint .hint-icon {
+  flex-shrink: 0;
+  font-size: 0.95rem;
+}
+
+/* Help tabs & Accordion */
+.location-help-container {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  background: rgba(11, 15, 25, 0.5);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: 0.8rem;
+}
+
+.location-help-tabs {
+  display: flex;
+  gap: 0.4rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  padding-bottom: 0.5rem;
+}
+
+.location-tab-btn {
+  flex: 1;
+  background: transparent;
+  border: none;
+  color: var(--text-dim);
+  font-size: clamp(0.72rem, 1.8vw, 0.8rem);
+  font-weight: 700;
+  padding: 0.45rem 0.5rem;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+  text-align: center;
+}
+
+.location-tab-btn:hover {
+  color: var(--text-main);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.location-tab-btn.active {
+  color: var(--accent-blue);
+  background: rgba(56, 189, 248, 0.12);
+  border: 1px solid rgba(56, 189, 248, 0.25);
+}
+
+.location-help-content {
+  padding-top: 0.4rem;
+}
+
+.android-notice-callout {
+  background: rgba(245, 158, 11, 0.08);
+  border: 1px solid rgba(245, 158, 11, 0.25);
+  border-radius: var(--radius-sm);
+  padding: 0.55rem 0.75rem;
+  font-size: 0.76rem;
+  color: #fde68a;
+  line-height: 1.4;
+  margin-bottom: 0.65rem;
+}
+
+.android-notice-callout strong {
+  display: block;
+  margin-bottom: 0.15rem;
+  color: var(--accent-amber);
+}
+
+.steps-ordered {
+  padding-left: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  font-size: clamp(0.78rem, 2vw, 0.83rem);
+  color: var(--text-muted);
+  line-height: 1.45;
+}
+
+.steps-ordered strong {
+  color: var(--text-main);
+}
+
+/* Action Buttons */
+.location-dialog-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  margin-top: 0.25rem;
+}
+
+.btn-dialog-retry {
+  width: 100%;
+  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+  color: white;
+  border: none;
+  border-radius: var(--radius-md);
+  padding: 0.85rem 1rem;
+  font-size: clamp(0.92rem, 2.2vw, 1rem);
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  box-shadow: 0 4px 18px rgba(16, 185, 129, 0.35);
+  min-height: 48px;
+  touch-action: manipulation;
+  transition: all 0.2s ease;
+}
+
+.btn-dialog-retry:hover {
+  filter: brightness(1.1);
+  transform: translateY(-1px);
+  box-shadow: 0 6px 22px rgba(16, 185, 129, 0.45);
+}
+
+.btn-dialog-manual {
+  width: 100%;
+  background: rgba(56, 189, 248, 0.08);
+  border: 1px solid rgba(56, 189, 248, 0.3);
+  color: var(--accent-blue);
+  border-radius: var(--radius-md);
+  padding: 0.8rem 1rem;
+  font-size: clamp(0.85rem, 2vw, 0.92rem);
+  font-weight: 700;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  min-height: 44px;
+  touch-action: manipulation;
+  transition: all 0.2s ease;
+}
+
+.btn-dialog-manual:hover {
+  background: rgba(56, 189, 248, 0.16);
+  border-color: var(--accent-blue);
+  color: white;
+}
+
+.btn-dialog-cancel {
+  width: 100%;
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--text-dim);
+  border-radius: var(--radius-md);
+  padding: 0.65rem 1rem;
+  font-size: clamp(0.82rem, 2vw, 0.88rem);
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  text-align: center;
+}
+
+.btn-dialog-cancel:hover {
+  color: var(--text-main);
+  background: rgba(255, 255, 255, 0.05);
+}
