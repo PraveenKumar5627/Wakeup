@@ -30,12 +30,12 @@ export default function App() {
   const [backendError, setBackendError] = useState(null);
   const [isBackendOnline, setIsBackendOnline] = useState(false);
 
-  // Location Permission State Machine:
+  // Location Permission State Management
   // 'idle' | 'requesting' | 'granted' | 'denied' | 'unavailable' | 'cancelled'
   const [locationStatus, setLocationStatus] = useState('idle');
   const [isLocationDialogOpen, setIsLocationDialogOpen] = useState(false);
-  const [locationErrorCode, setLocationErrorCode] = useState(null);
-  const [locationErrorMessage, setLocationErrorMessage] = useState('');
+  const [isRequestingLocation, setIsRequestingLocation] = useState(false);
+  const [locationError, setLocationError] = useState(null);
 
   // Alarm modal & audio state
   const [isAlarmActive, setIsAlarmActive] = useState(false);
@@ -125,15 +125,85 @@ export default function App() {
     );
   };
 
-  // 4. Start Trip: request GPS and begin tracking
+  // Helper when location is successfully obtained
+  const onLocationSuccess = (position) => {
+    const { latitude, longitude } = position.coords;
+    setLocationStatus('granted');
+    setIsRequestingLocation(false);
+    setIsLocationDialogOpen(false);
+    setLocationError(null);
+    setGpsError(null);
+    setCurrentLocation({ lat: latitude, lng: longitude });
+    setIsTripActive(true);
+
+    // Sync with backend API
+    syncLocationWithBackend(latitude, longitude, destination, alertDistance);
+
+    // Start continuous live tracking for transit updates
+    startLiveWatch();
+  };
+
+  /**
+   * requestCurrentLocation:
+   * Core function to request current location once via navigator.geolocation.
+   * Returns a promise resolving to coordinates or rejecting with error.
+   */
+  const requestCurrentLocation = () => {
+    return new Promise((resolve, reject) => {
+      if (!('geolocation' in navigator)) {
+        const err = new Error('Geolocation is not supported by your browser.');
+        err.code = 2; // POSITION_UNAVAILABLE
+        reject(err);
+        return;
+      }
+
+      // If running inside a supported native Android wrapper (Capacitor/Cordova/Android bridge),
+      // invoke the native settings/resolution intent.
+      try {
+        if (window.Capacitor?.Plugins?.LocationSettings) {
+          window.Capacitor.Plugins.LocationSettings.enable();
+        } else if (window.Android?.openLocationSettings) {
+          window.Android.openLocationSettings();
+        }
+      } catch (e) {
+        console.warn('Native wrapper call not available:', e);
+      }
+
+      navigator.geolocation.getCurrentPosition(
+        (position) => resolve(position),
+        (error) => reject(error),
+        {
+          enableHighAccuracy: true,
+          timeout: 15000,
+          maximumAge: 0,
+        }
+      );
+    });
+  };
+
+  /**
+   * handleStartTrip:
+   * Triggered when the user clicks START TRIP.
+   * Checks permissions and either starts tracking or presents the location dialog.
+   */
   const handleStartTrip = async () => {
     if (!destination) {
       alert('Please select or search for a destination first.');
       return;
     }
 
-    // Prevent duplicate concurrent requests if already requesting
-    if (locationStatus === 'requesting') {
+    if (isRequestingLocation) {
+      return; // Prevent duplicate requests
+    }
+
+    // If the user previously encountered an unavailable state or clicked "No, thanks",
+    // open the dialog letting them choose between "Turn on location" and "No, thanks".
+    if (
+      locationStatus === 'cancelled' ||
+      locationStatus === 'denied' ||
+      locationStatus === 'unavailable'
+    ) {
+      setIsLocationDialogOpen(true);
       return;
     }
 
@@ -143,17 +213,7 @@ export default function App() {
     setBackendError(null);
     setIsTripActive(false);
     setIsSimulating(false);
-    setLocationErrorCode(null);
-    setLocationErrorMessage('');
-
-    // Check browser geolocation support
-    if (!('geolocation' in navigator)) {
-      setLocationStatus('unavailable');
-      setLocationErrorCode('POSITION_UNAVAILABLE');
-      setLocationErrorMessage('Geolocation is not supported by your browser. Please use the simulator below.');
-      setIsLocationDialogOpen(true);
-      return;
-    }
+    setLocationError(null);
 
     // Check browser permissions state if supported
     if (navigator.permissions && navigator.permissions.query) {
@@ -161,109 +221,106 @@ export default function App() {
         const perm = await navigator.permissions.query({ name: 'geolocation' });
         if (perm.state === 'denied') {
           setLocationStatus('denied');
-          setLocationErrorCode('PERMISSION_DENIED');
-          setLocationErrorMessage(
+          setLocationError(
             'Browser location permission is blocked. Tap the 🔒 lock icon in your address bar to allow location.'
           );
           setIsLocationDialogOpen(true);
           return;
         }
       } catch {
-        // Permissions API unsupported or failed, continue directly to request
+        // Permissions API unsupported or failed, continue directly
       }
     }
 
-    // Transition state to 'requesting'
+    setIsRequestingLocation(true);
     setLocationStatus('requesting');
-    setGpsError('📡 Requesting location... Tap "Allow" or "Turn on" if your device asks for location.');
+    setGpsError('📡 Requesting location... Tap "Allow" or "Turn on" if your device prompts.');
 
-    // Execute a single, non-repeating location request.
-    // CRITICAL: We do NOT use automatic background timers, loops, or pokes.
-    // If the user rejects or taps "No, thanks", it will NOT prompt again.
-    navigator.geolocation.getCurrentPosition(
-      (position) => {
-        // SUCCESS: Coordinates successfully acquired
-        const { latitude, longitude } = position.coords;
-        setLocationStatus('granted');
-        setIsLocationDialogOpen(false);
-        setGpsError(null);
-        setCurrentLocation({ lat: latitude, lng: longitude });
-        setIsTripActive(true);
+    try {
+      const position = await requestCurrentLocation();
+      onLocationSuccess(position);
+    } catch (error) {
+      console.warn('Geolocation request failed:', error);
+      setIsRequestingLocation(false);
+      stopAllTracking();
+      setIsTripActive(false);
+      setGpsError(null);
 
-        // Sync with backend API
-        syncLocationWithBackend(latitude, longitude, destination, alertDistance);
-
-        // Start continuous live tracking for transit updates
-        startLiveWatch();
-      },
-      (error) => {
-        // REJECTION OR ERROR: User tapped "No, thanks", "Block", or GPS is disabled
-        console.warn('Geolocation request failed:', error);
-        stopAllTracking();
-        setIsTripActive(false);
-        setGpsError(null);
-
-        switch (error.code) {
-          case error.PERMISSION_DENIED: // Code 1
-            setLocationStatus('denied');
-            setLocationErrorCode('PERMISSION_DENIED');
-            setLocationErrorMessage(
-              'Location permission was denied in your browser settings.'
-            );
-            setIsLocationDialogOpen(true);
-            break;
-
-          case error.POSITION_UNAVAILABLE: // Code 2 (Android "No, thanks" or GPS disabled)
-            setLocationStatus('unavailable');
-            setLocationErrorCode('POSITION_UNAVAILABLE');
-            setLocationErrorMessage(
-              'Device location is turned off or was not enabled in settings.'
-            );
-            setIsLocationDialogOpen(true);
-            break;
-
-          case error.TIMEOUT: // Code 3
-            setLocationStatus('unavailable');
-            setLocationErrorCode('TIMEOUT');
-            setLocationErrorMessage(
-              'Location request timed out. Please check your GPS signal and try again.'
-            );
-            setIsLocationDialogOpen(true);
-            break;
-
-          default:
-            setLocationStatus('unavailable');
-            setLocationErrorCode('POSITION_UNAVAILABLE');
-            setLocationErrorMessage(
-              error.message || 'Unable to retrieve location. Please check device location settings.'
-            );
-            setIsLocationDialogOpen(true);
-            break;
-        }
-      },
-      {
-        enableHighAccuracy: true,
-        timeout: 15000,
-        maximumAge: 0,
+      let msg = '';
+      if (error.code === 1) {
+        setLocationStatus('denied');
+        msg = 'Location permission was denied in your browser settings. Please allow location access.';
+      } else if (error.code === 2) {
+        setLocationStatus('unavailable');
+        msg = 'Device location is turned off or was not enabled. Please enable Location in Android settings.';
+      } else if (error.code === 3) {
+        setLocationStatus('unavailable');
+        msg = 'Location request timed out. Please check your GPS signal and try again.';
+      } else {
+        setLocationStatus('unavailable');
+        msg = error.message || 'Unable to access device location.';
       }
-    );
+
+      setLocationError(msg);
+      setIsLocationDialogOpen(true);
+    }
   };
 
-  // 5. User Action: Try Again from custom dialog
-  const handleTryAgain = () => {
-    setIsLocationDialogOpen(false);
-    handleStartTrip();
+  /**
+   * handleTurnOnLocation:
+   * Triggered when the user clicks "Turn on location" inside the dialog.
+   */
+  const handleTurnOnLocation = async () => {
+    if (isRequestingLocation) return;
+
+    setIsRequestingLocation(true);
+    setLocationStatus('requesting');
+    setLocationError(null);
+
+    try {
+      const position = await requestCurrentLocation();
+      onLocationSuccess(position);
+    } catch (error) {
+      console.warn('Turn on location failed:', error);
+      setIsRequestingLocation(false);
+      let msg = '';
+      if (error.code === 1) {
+        setLocationStatus('denied');
+        msg = 'Browser permission denied. Tap the 🔒 lock icon in the address bar → Site settings → Location → Allow.';
+      } else if (error.code === 2) {
+        setLocationStatus('unavailable');
+        msg = 'Device location or Google Location Accuracy is turned off. Please turn it on in Android settings.';
+      } else if (error.code === 3) {
+        setLocationStatus('unavailable');
+        msg = 'Location request timed out. Move to an area with clear sky view and try again.';
+      } else {
+        setLocationStatus('unavailable');
+        msg = error.message || 'Unable to access device location.';
+      }
+      setLocationError(msg);
+      // Keep dialog open so user can see instructions or tap No, thanks
+    }
   };
 
-  // 6. User Action: Enter Destination Manually from custom dialog
-  const handleEnterDestinationManually = () => {
+  /**
+   * handleNoThanks:
+   * Triggered when the user clicks "No, thanks" inside the dialog.
+   * Cancels the trip, closes the dialog, and stops all background requests.
+   */
+  const handleNoThanks = () => {
     setIsLocationDialogOpen(false);
+    setIsRequestingLocation(false);
     setLocationStatus('cancelled');
-    stopAllTracking();
     setIsTripActive(false);
     setGpsError(null);
+    stopAllTracking();
+    // Do NOT request location again. The user remains safely on the page.
+    // When the user clicks Start Trip again, the dialog will appear again cleanly.
+  };
 
-    // Scroll to destination search container smoothly
+  // User action: Enter destination manually from settings guide
+  const handleEnterDestinationManually = () => {
+    handleNoThanks();
     const searchEl = document.querySelector('.search-input') || document.querySelector('.destination-card');
     if (searchEl) {
       searchEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -273,16 +330,7 @@ export default function App() {
     }
   };
 
-  // 7. User Action: Cancel from custom dialog (stops attempt and does not reopen)
-  const handleCancelLocationDialog = () => {
-    setIsLocationDialogOpen(false);
-    setLocationStatus('cancelled');
-    stopAllTracking();
-    setIsTripActive(false);
-    setGpsError(null);
-  };
-
-  // 8. Stop Trip
+  // Stop Trip
   const handleStopTrip = () => {
     stopAllTracking();
     setIsTripActive(false);
@@ -445,15 +493,14 @@ export default function App() {
         onStopAlarm={handleStopAlarm}
       />
 
-      {/* User-Friendly Location Permission & Settings Modal */}
+      {/* Android Location Accuracy & Permission Dialog */}
       <LocationPermissionDialog
         isOpen={isLocationDialogOpen}
-        status={locationStatus}
-        errorCode={locationErrorCode}
-        errorMessage={locationErrorMessage}
-        onTryAgain={handleTryAgain}
+        isRequesting={isRequestingLocation}
+        locationError={locationError}
+        onTurnOnLocation={handleTurnOnLocation}
+        onNoThanks={handleNoThanks}
         onEnterDestinationManually={handleEnterDestinationManually}
-        onCancel={handleCancelLocationDialog}
       />
 
       <footer className="app-footer">

@@ -3,156 +3,168 @@ import React, { useState } from 'react';
 /**
  * LocationPermissionDialog
  *
- * User-friendly dialog explaining location access requirements, handling
- * permission rejection, device location settings (Android Location Accuracy),
- * and browser permissions without repeated prompts.
+ * Designed to resemble the native Android Location Accuracy prompt
+ * ("To continue, your device will need to use Location Accuracy")
+ * with "No, thanks" and "Turn on location" buttons.
+ *
+ * Compliant with web standards: does not claim a website can directly toggle
+ * OS settings, but uses browser Geolocation API and guides the user when needed.
  */
 export default function LocationPermissionDialog({
   isOpen,
-  status, // 'denied' | 'unavailable' | 'cancelled' | 'requesting'
-  errorCode, // 'PERMISSION_DENIED' | 'POSITION_UNAVAILABLE' | 'TIMEOUT' | null
-  errorMessage,
-  onTryAgain,
+  isRequesting = false,
+  locationError = null,
+  onTurnOnLocation,
+  onNoThanks,
   onEnterDestinationManually,
-  onCancel,
 }) {
-  const [activeTab, setActiveTab] = useState(
-    errorCode === 'PERMISSION_DENIED' ? 'browser' : 'android'
-  );
+  const [showSettingsHelp, setShowSettingsHelp] = useState(false);
 
   if (!isOpen) return null;
 
   return (
-    <div className="location-dialog-overlay" role="dialog" aria-modal="true" aria-labelledby="loc-dialog-title">
-      <div className="location-dialog-card">
-        {/* Header with Location Icon */}
-        <div className="location-dialog-header">
-          <div className="location-dialog-icon-wrapper">
-            <span className="location-dialog-icon">📍</span>
-            <span className="location-dialog-pulse" />
+    <div
+      className="android-loc-dialog-overlay"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="android-loc-title"
+    >
+      <div className="android-loc-dialog-card">
+        {/* Main Title matching Android system dialog */}
+        <h2 id="android-loc-title" className="android-loc-title">
+          To continue, your device will need to use Location Accuracy
+        </h2>
+
+        {/* Subtitle */}
+        <p className="android-loc-subtitle">
+          The following settings should be on:
+        </p>
+
+        {/* Setting 1: Device location */}
+        <div className="android-loc-setting-row">
+          <div className="android-loc-icon-wrapper" aria-hidden="true">
+            <svg
+              className="android-loc-svg-icon"
+              viewBox="0 0 24 24"
+              fill="currentColor"
+            >
+              <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z" />
+            </svg>
           </div>
-          <div>
-            <h2 id="loc-dialog-title" className="location-dialog-title">
-              Location Access Required
-            </h2>
-            <span className="location-status-pill">
-              {errorCode === 'PERMISSION_DENIED' && '🔒 Browser Permission Blocked'}
-              {errorCode === 'POSITION_UNAVAILABLE' && '📱 Device Location / Accuracy Off'}
-              {errorCode === 'TIMEOUT' && '⏱️ GPS Connection Timed Out'}
-              {!errorCode && '⚠️ Location Unavailable'}
-            </span>
+          <div className="android-loc-setting-text">
+            <span className="android-loc-setting-name">Device location</span>
           </div>
         </div>
 
-        {/* Primary Required Explanation */}
-        <p className="location-dialog-primary-msg">
-          Location access is required to start your trip and calculate the distance to your destination.
-          Please enable location services and allow location access in your browser settings.
-        </p>
+        {/* Setting 2: Location Accuracy with Google description */}
+        <div className="android-loc-setting-row">
+          <div className="android-loc-icon-wrapper" aria-hidden="true">
+            <svg
+              className="android-loc-svg-icon"
+              viewBox="0 0 24 24"
+              fill="currentColor"
+            >
+              <path d="M12 8c-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4-1.79-4-4-4zm8.94 3c-.46-4.17-3.77-7.48-7.94-7.94V1h-2v2.06C6.83 3.52 3.52 6.83 3.06 11H1v2h2.06c.46 4.17 3.77 7.48 7.94 7.94V23h2v-2.06c4.17-.46 7.48-3.77 7.94-7.94H23v-2h-2.06zM12 19c-3.87 0-7-3.13-7-7s3.13-7 7-7 7 3.13 7 7-3.13 7-7 7z" />
+            </svg>
+          </div>
+          <div className="android-loc-setting-text">
+            <p className="android-loc-setting-desc">
+              <strong>Location Accuracy</strong>, which provides more accurate
+              location for apps and services. To do this, Google periodically
+              processes information about device sensors and wireless signals
+              from your device to crowdsource wireless signal locations. These
+              are used without identifying you to improve location accuracy and
+              location-based services and to improve, provide and maintain
+              Google's services based on Google's and third parties' legitimate
+              interests to serve users' needs.
+            </p>
+          </div>
+        </div>
 
-        {/* Dynamic Context Notice */}
-        {errorMessage && (
-          <div className="location-dialog-error-hint">
-            <span className="hint-icon">ℹ️</span>
-            <span>{errorMessage}</span>
+        {/* Inline error notice if permission was denied or device location off */}
+        {locationError && (
+          <div className="android-loc-error-banner" role="alert">
+            <span className="android-loc-error-icon">⚠️</span>
+            <div className="android-loc-error-text">
+              {typeof locationError === 'string'
+                ? locationError
+                : locationError.message || 'Unable to access device location.'}
+            </div>
           </div>
         )}
 
-        {/* Settings Help Tabs */}
-        <div className="location-help-container">
-          <div className="location-help-tabs" role="tablist">
-            <button
-              type="button"
-              role="tab"
-              aria-selected={activeTab === 'android'}
-              className={`location-tab-btn ${activeTab === 'android' ? 'active' : ''}`}
-              onClick={() => setActiveTab('android')}
-            >
-              📱 Android / Device Settings
-            </button>
-            <button
-              type="button"
-              role="tab"
-              aria-selected={activeTab === 'browser'}
-              className={`location-tab-btn ${activeTab === 'browser' ? 'active' : ''}`}
-              onClick={() => setActiveTab('browser')}
-            >
-              🔒 Browser Site Permissions
-            </button>
-          </div>
+        {/* Footer info link */}
+        <p className="android-loc-footer-text">
+          You can change this at any time in location settings.{' '}
+          <button
+            type="button"
+            className="android-loc-link-btn"
+            onClick={() => setShowSettingsHelp((prev) => !prev)}
+          >
+            {showSettingsHelp ? 'Hide guide' : 'Manage settings or learn more'}
+          </button>
+        </p>
 
-          <div className="location-help-content">
-            {activeTab === 'android' ? (
-              <div className="help-step-list">
-                <div className="android-notice-callout">
-                  <strong>ℹ️ Android System Notice:</strong>
-                  <p>
-                    The <em>"Location Accuracy"</em> dialog is managed directly by Android and Google Play Services.
-                    Websites cannot turn on device location automatically.
-                  </p>
-                </div>
-                <ol className="steps-ordered">
-                  <li>
-                    <strong>Turn on Device Location:</strong> Swipe down from the top of your phone screen to open Quick Settings, then tap the <strong>Location</strong> icon to turn it ON.
-                  </li>
-                  <li>
-                    <strong>Enable Google Location Accuracy:</strong> Go to phone <strong>Settings → Location → Location Services → Google Location Accuracy</strong> and toggle it <strong>ON</strong>.
-                  </li>
-                  <li>
-                    When the Android dialog appears, tap <strong>"Turn on"</strong> instead of <em>"No, thanks"</em>.
-                  </li>
-                </ol>
-              </div>
-            ) : (
-              <div className="help-step-list">
-                <ol className="steps-ordered">
-                  <li>
-                    Tap the <strong>🔒 Lock icon</strong> (or tune settings icon) on the left side of your browser address bar.
-                  </li>
-                  <li>
-                    Tap <strong>Permissions</strong> or <strong>Site settings</strong>.
-                  </li>
-                  <li>
-                    Find <strong>Location</strong> and change it to <strong>Allow</strong>.
-                  </li>
-                  <li>
-                    Return to this page and tap <strong>Try Again</strong> below.
-                  </li>
-                </ol>
+        {/* Expandable settings guide */}
+        {showSettingsHelp && (
+          <div className="android-loc-expandable-guide">
+            <div className="android-loc-guide-section">
+              <strong>📱 Android Device Settings:</strong>
+              <ol>
+                <li>Swipe down from the top of your screen to open Quick Settings.</li>
+                <li>Tap the <strong>Location</strong> icon to turn it ON.</li>
+                <li>
+                  Go to <strong>Settings → Location → Location Services → Google Location Accuracy</strong> and toggle it ON.
+                </li>
+              </ol>
+            </div>
+            <div className="android-loc-guide-section">
+              <strong>🔒 Browser Site Permissions:</strong>
+              <ol>
+                <li>Tap the <strong>Lock icon (🔒)</strong> in your browser address bar.</li>
+                <li>Tap <strong>Permissions</strong> or <strong>Site settings</strong>.</li>
+                <li>Set <strong>Location</strong> to <strong>Allow</strong>.</li>
+              </ol>
+            </div>
+            {onEnterDestinationManually && (
+              <div style={{ marginTop: '0.6rem', textAlign: 'center' }}>
+                <button
+                  type="button"
+                  className="android-loc-manual-link"
+                  onClick={onEnterDestinationManually}
+                >
+                  ✏️ Enter destination manually or use simulator
+                </button>
               </div>
             )}
           </div>
-        </div>
+        )}
 
-        {/* Action Buttons */}
-        <div className="location-dialog-actions">
+        {/* Bottom Actions: No, thanks & Turn on location */}
+        <div className="android-loc-actions">
           <button
             type="button"
-            className="btn-dialog-retry"
-            onClick={onTryAgain}
-            title="Retry detecting location"
+            className="android-btn-no-thanks"
+            onClick={onNoThanks}
+            disabled={isRequesting}
           >
-            <span>🔄</span>
-            <span>Try Again</span>
+            No, thanks
           </button>
 
           <button
             type="button"
-            className="btn-dialog-manual"
-            onClick={onEnterDestinationManually}
-            title="Select or edit destination manually / use simulator"
+            className="android-btn-turn-on"
+            onClick={onTurnOnLocation}
+            disabled={isRequesting}
           >
-            <span>✏️</span>
-            <span>Enter Destination Manually</span>
-          </button>
-
-          <button
-            type="button"
-            className="btn-dialog-cancel"
-            onClick={onCancel}
-            title="Cancel and close this dialog"
-          >
-            <span>✕ Cancel</span>
+            {isRequesting ? (
+              <>
+                <span className="android-btn-spinner" />
+                <span>Checking...</span>
+              </>
+            ) : (
+              'Turn on location'
+            )}
           </button>
         </div>
       </div>

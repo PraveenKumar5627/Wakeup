@@ -964,14 +964,14 @@ body {
 }
 
 /* ==========================================================================
-   Location Permission & Settings Dialog Modal
+   Android Location Accuracy Permission Dialog (Material 3 Styled)
    ========================================================================== */
-.location-dialog-overlay {
+.android-loc-dialog-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(11, 15, 25, 0.88);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
+  background: rgba(0, 0, 0, 0.78);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
   z-index: 99998;
   display: flex;
   align-items: center;
@@ -981,258 +981,230 @@ body {
   overflow-y: auto;
 }
 
-.location-dialog-card {
+.android-loc-dialog-card {
   width: 100%;
-  max-width: 500px;
-  background: linear-gradient(180deg, #17223b 0%, #0d1527 100%);
-  border: 1px solid rgba(56, 189, 248, 0.3);
-  border-radius: var(--radius-lg);
-  padding: clamp(1.2rem, 3.5vw, 1.8rem);
-  box-shadow: 0 20px 50px -10px rgba(0, 0, 0, 0.7), 0 0 30px rgba(56, 189, 248, 0.12);
-  color: var(--text-main);
+  max-width: 440px;
+  background: #191c19;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 28px;
+  padding: clamp(1.3rem, 4vw, 1.8rem);
+  color: #e2e3de;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.8);
+  display: flex;
+  flex-direction: column;
+  gap: 0.95rem;
   margin: auto;
-  display: flex;
-  flex-direction: column;
-  gap: 1.1rem;
 }
 
-.location-dialog-header {
-  display: flex;
-  align-items: center;
-  gap: 0.9rem;
-}
-
-.location-dialog-icon-wrapper {
-  position: relative;
-  width: 48px;
-  height: 48px;
-  border-radius: var(--radius-md);
-  background: rgba(56, 189, 248, 0.15);
-  border: 1px solid rgba(56, 189, 248, 0.35);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-}
-
-.location-dialog-icon {
-  font-size: 1.6rem;
-  z-index: 2;
-}
-
-.location-dialog-pulse {
-  position: absolute;
-  inset: -4px;
-  border-radius: inherit;
-  border: 1px solid var(--accent-blue);
-  opacity: 0.5;
-  animation: pulse 2s infinite ease-out;
-}
-
-.location-dialog-title {
-  font-size: clamp(1.15rem, 3vw, 1.35rem);
-  font-weight: 800;
-  color: var(--text-main);
-  letter-spacing: -0.01em;
-  line-height: 1.2;
-}
-
-.location-status-pill {
-  display: inline-block;
-  font-size: 0.72rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: var(--accent-amber);
-  background: rgba(245, 158, 11, 0.12);
-  border: 1px solid rgba(245, 158, 11, 0.3);
-  padding: 0.2rem 0.55rem;
-  border-radius: var(--radius-full);
-  margin-top: 0.25rem;
-}
-
-.location-dialog-primary-msg {
-  font-size: clamp(0.88rem, 2.2vw, 0.96rem);
-  line-height: 1.5;
-  color: #e2e8f0;
-  background: rgba(15, 23, 42, 0.6);
-  padding: 0.85rem 1rem;
-  border-radius: var(--radius-md);
-  border-left: 3px solid var(--accent-blue);
-}
-
-.location-dialog-error-hint {
-  display: flex;
-  align-items: flex-start;
-  gap: 0.5rem;
-  font-size: 0.82rem;
-  color: var(--text-muted);
-  background: rgba(30, 41, 59, 0.45);
-  padding: 0.6rem 0.8rem;
-  border-radius: var(--radius-sm);
-  border: 1px dashed rgba(148, 163, 184, 0.25);
-  line-height: 1.4;
-}
-
-.location-dialog-error-hint .hint-icon {
-  flex-shrink: 0;
-  font-size: 0.95rem;
-}
-
-/* Help tabs & Accordion */
-.location-help-container {
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-  background: rgba(11, 15, 25, 0.5);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-md);
-  padding: 0.8rem;
-}
-
-.location-help-tabs {
-  display: flex;
-  gap: 0.4rem;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
-  padding-bottom: 0.5rem;
-}
-
-.location-tab-btn {
-  flex: 1;
-  background: transparent;
-  border: none;
-  color: var(--text-dim);
-  font-size: clamp(0.72rem, 1.8vw, 0.8rem);
-  font-weight: 700;
-  padding: 0.45rem 0.5rem;
-  border-radius: var(--radius-sm);
-  cursor: pointer;
-  transition: all 0.2s ease;
-  white-space: nowrap;
-  text-align: center;
-}
-
-.location-tab-btn:hover {
-  color: var(--text-main);
-  background: rgba(255, 255, 255, 0.04);
-}
-
-.location-tab-btn.active {
-  color: var(--accent-blue);
-  background: rgba(56, 189, 248, 0.12);
-  border: 1px solid rgba(56, 189, 248, 0.25);
-}
-
-.location-help-content {
-  padding-top: 0.4rem;
-}
-
-.android-notice-callout {
-  background: rgba(245, 158, 11, 0.08);
-  border: 1px solid rgba(245, 158, 11, 0.25);
-  border-radius: var(--radius-sm);
-  padding: 0.55rem 0.75rem;
-  font-size: 0.76rem;
-  color: #fde68a;
-  line-height: 1.4;
-  margin-bottom: 0.65rem;
-}
-
-.android-notice-callout strong {
-  display: block;
-  margin-bottom: 0.15rem;
-  color: var(--accent-amber);
-}
-
-.steps-ordered {
-  padding-left: 1.25rem;
-  display: flex;
-  flex-direction: column;
-  gap: 0.45rem;
-  font-size: clamp(0.78rem, 2vw, 0.83rem);
-  color: var(--text-muted);
-  line-height: 1.45;
-}
-
-.steps-ordered strong {
-  color: var(--text-main);
-}
-
-/* Action Buttons */
-.location-dialog-actions {
-  display: flex;
-  flex-direction: column;
-  gap: 0.55rem;
-  margin-top: 0.25rem;
-}
-
-.btn-dialog-retry {
-  width: 100%;
-  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
-  color: white;
-  border: none;
-  border-radius: var(--radius-md);
-  padding: 0.85rem 1rem;
-  font-size: clamp(0.92rem, 2.2vw, 1rem);
-  font-weight: 800;
-  letter-spacing: 0.02em;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.5rem;
-  box-shadow: 0 4px 18px rgba(16, 185, 129, 0.35);
-  min-height: 48px;
-  touch-action: manipulation;
-  transition: all 0.2s ease;
-}
-
-.btn-dialog-retry:hover {
-  filter: brightness(1.1);
-  transform: translateY(-1px);
-  box-shadow: 0 6px 22px rgba(16, 185, 129, 0.45);
-}
-
-.btn-dialog-manual {
-  width: 100%;
-  background: rgba(56, 189, 248, 0.08);
-  border: 1px solid rgba(56, 189, 248, 0.3);
-  color: var(--accent-blue);
-  border-radius: var(--radius-md);
-  padding: 0.8rem 1rem;
-  font-size: clamp(0.85rem, 2vw, 0.92rem);
-  font-weight: 700;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.5rem;
-  min-height: 44px;
-  touch-action: manipulation;
-  transition: all 0.2s ease;
-}
-
-.btn-dialog-manual:hover {
-  background: rgba(56, 189, 248, 0.16);
-  border-color: var(--accent-blue);
-  color: white;
-}
-
-.btn-dialog-cancel {
-  width: 100%;
-  background: transparent;
-  border: 1px solid transparent;
-  color: var(--text-dim);
-  border-radius: var(--radius-md);
-  padding: 0.65rem 1rem;
-  font-size: clamp(0.82rem, 2vw, 0.88rem);
+.android-loc-title {
+  font-size: clamp(1.15rem, 3vw, 1.25rem);
   font-weight: 600;
-  cursor: pointer;
-  transition: all 0.15s ease;
-  text-align: center;
+  color: #e2e3de;
+  line-height: 1.35;
+  margin: 0;
 }
 
-.btn-dialog-cancel:hover {
-  color: var(--text-main);
-  background: rgba(255, 255, 255, 0.05);
+.android-loc-subtitle {
+  font-size: 0.92rem;
+  color: #c6c7c1;
+  margin-top: 0.15rem;
+  margin-bottom: 0.25rem;
+}
+
+.android-loc-setting-row {
+  display: flex;
+  gap: 1rem;
+  align-items: flex-start;
+}
+
+.android-loc-icon-wrapper {
+  width: 24px;
+  height: 24px;
+  flex-shrink: 0;
+  color: #c2e7a4;
+  margin-top: 2px;
+}
+
+.android-loc-svg-icon {
+  width: 24px;
+  height: 24px;
+  fill: currentColor;
+}
+
+.android-loc-setting-text {
+  flex: 1;
+}
+
+.android-loc-setting-name {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #e2e3de;
+}
+
+.android-loc-setting-desc {
+  font-size: 0.8rem;
+  line-height: 1.48;
+  color: #c6c7c1;
+  margin: 0;
+}
+
+.android-loc-setting-desc strong {
+  color: #e2e3de;
+}
+
+.android-loc-error-banner {
+  background: rgba(239, 68, 68, 0.12);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  border-radius: 14px;
+  padding: 0.65rem 0.85rem;
+  font-size: 0.8rem;
+  color: #fca5a5;
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  line-height: 1.4;
+}
+
+.android-loc-error-icon {
+  font-size: 1rem;
+  flex-shrink: 0;
+}
+
+.android-loc-error-text {
+  flex: 1;
+}
+
+.android-loc-footer-text {
+  font-size: 0.78rem;
+  color: #8f928a;
+  line-height: 1.45;
+  margin-top: 0.1rem;
+}
+
+.android-loc-link-btn {
+  background: none;
+  border: none;
+  color: #c2e7a4;
+  text-decoration: underline;
+  cursor: pointer;
+  font-size: inherit;
+  font-family: inherit;
+  font-weight: 600;
+  padding: 0;
+}
+
+.android-loc-link-btn:hover {
+  filter: brightness(1.15);
+}
+
+.android-loc-expandable-guide {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 16px;
+  padding: 0.85rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+  font-size: 0.78rem;
+  color: #c6c7c1;
+  line-height: 1.45;
+  animation: fadeIn 0.2s ease-out;
+}
+
+.android-loc-guide-section strong {
+  color: #e2e3de;
+  display: block;
+  margin-bottom: 0.2rem;
+}
+
+.android-loc-guide-section ol {
+  padding-left: 1.2rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.android-loc-manual-link {
+  background: none;
+  border: none;
+  color: var(--accent-blue);
+  text-decoration: underline;
+  cursor: pointer;
+  font-size: 0.8rem;
+  font-weight: 600;
+  padding: 0.2rem 0;
+}
+
+/* Actions Row: No, thanks & Turn on */
+.android-loc-actions {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 0.8rem;
+  margin-top: 0.75rem;
+}
+
+.android-btn-no-thanks {
+  background: transparent;
+  border: 1px solid rgba(198, 199, 193, 0.35);
+  border-radius: 9999px;
+  padding: 0.65rem 1.35rem;
+  font-size: 0.92rem;
+  font-weight: 600;
+  color: #c6c7c1;
+  cursor: pointer;
+  min-height: 44px;
+  transition: all 0.2s ease;
+  touch-action: manipulation;
+}
+
+.android-btn-no-thanks:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+}
+
+.android-btn-turn-on {
+  background: #c2e7a4;
+  border: none;
+  border-radius: 9999px;
+  padding: 0.65rem 1.45rem;
+  font-size: 0.92rem;
+  font-weight: 700;
+  color: #102008;
+  cursor: pointer;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  box-shadow: 0 2px 10px rgba(194, 231, 164, 0.25);
+  transition: all 0.2s ease;
+  touch-action: manipulation;
+}
+
+.android-btn-turn-on:hover:not(:disabled) {
+  filter: brightness(1.08);
+  transform: translateY(-1px);
+}
+
+.android-btn-turn-on:disabled,
+.android-btn-no-thanks:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.android-btn-spinner {
+  width: 14px;
+  height: 14px;
+  border: 2px solid #102008;
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
