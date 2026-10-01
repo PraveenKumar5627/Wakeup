@@ -36,8 +36,19 @@ export default function App() {
   const [isSimulating, setIsSimulating] = useState(false);
   const simOffsetRef = useRef(0.1); // ~11 km away initially
 
-  // Watch position reference for cleanup
+  // Watch position reference & lifecycle tracking
   const watchIdRef = useRef(null);
+  const isTripActiveRef = useRef(false);
+  const hasReceivedFirstFixRef = useRef(false);
+  const retryTimersRef = useRef([]);
+
+  // Clear any scheduled retry timers
+  const clearRetryTimers = () => {
+    if (retryTimersRef.current && retryTimersRef.current.length > 0) {
+      retryTimersRef.current.forEach((id) => clearTimeout(id));
+      retryTimersRef.current = [];
+    }
+  };
 
   // 1. Periodically check backend health
   useEffect(() => {
@@ -88,120 +99,153 @@ export default function App() {
     setGpsError(null);
     setBackendError(null);
     setIsTripActive(true);
+    isTripActiveRef.current = true;
+    hasReceivedFirstFixRef.current = false;
     setIsSimulating(false);
+
+    clearRetryTimers();
+    if (watchIdRef.current !== null) {
+      navigator.geolocation.clearWatch(watchIdRef.current);
+      watchIdRef.current = null;
+    }
 
     if (!('geolocation' in navigator)) {
       setGpsError('Geolocation is not supported by your browser. Please use the simulator below.');
+      setIsTripActive(false);
+      isTripActiveRef.current = false;
       return;
     }
 
-    // Check current permission state before requesting GPS
+    // Set reassuring status message
+    setGpsError('📡 Accessing location... If your phone asks for Location Accuracy, please tap "Turn on".');
+
+    // Check browser permission state if supported
     if (navigator.permissions) {
       try {
         const perm = await navigator.permissions.query({ name: 'geolocation' });
         if (perm.state === 'denied') {
-          setGpsError('❌ Location blocked. Fix: tap the 🔒 icon in your browser address bar → Site settings → Location → Allow. Then try again.');
+          setGpsError('❌ Location blocked. Fix: tap the 🔒 icon in your browser address bar → Site settings → Location → Allow. Then tap START TRIP again.');
           setIsTripActive(false);
+          isTripActiveRef.current = false;
           return;
         }
-        if (perm.state === 'prompt') {
-          setGpsError('📍 Tap "Allow" on the popup to share your location.');
-        } else {
-          setGpsError('📡 Acquiring your GPS location...');
-        }
       } catch {
-        setGpsError('📍 Please allow location access if prompted.');
+        // Permissions API unsupported or failed, continue to geolocation request
       }
-    } else {
-      setGpsError('📍 Please allow location access if prompted.');
     }
 
     // Callback on successful GPS position acquisition
     const onSuccess = (position) => {
+      if (!isTripActiveRef.current) return;
+      hasReceivedFirstFixRef.current = true;
+      clearRetryTimers();
+
       const { latitude, longitude } = position.coords;
       setCurrentLocation({ lat: latitude, lng: longitude });
-      setGpsError(null); // Clear any previous loading message
+      setGpsError(null); // Clear loading / warning messages
       syncLocationWithBackend(latitude, longitude, destination, alertDistance);
     };
 
     // Callback on GPS permission denial or location acquisition failure
     const onError = (error) => {
       console.warn('Geolocation error:', error);
+      if (!isTripActiveRef.current) return;
+
       switch (error.code) {
         case error.PERMISSION_DENIED:
-          setGpsError('GPS permission was denied. Please allow location access in your browser settings.');
+          clearRetryTimers();
+          if (watchIdRef.current !== null) {
+            navigator.geolocation.clearWatch(watchIdRef.current);
+            watchIdRef.current = null;
+          }
+          setGpsError('❌ Location access was denied. Please allow location permissions in your browser or phone settings.');
+          setIsTripActive(false);
+          isTripActiveRef.current = false;
           break;
+
         case error.POSITION_UNAVAILABLE:
-          setGpsError('Searching for GPS signal... Please stay in an open area.');
+          if (!hasReceivedFirstFixRef.current) {
+            // User likely tapped "No, thanks" on the Android system dialog or GPS is disabled
+            clearRetryTimers();
+            if (watchIdRef.current !== null) {
+              navigator.geolocation.clearWatch(watchIdRef.current);
+              watchIdRef.current = null;
+            }
+            setGpsError('⚠️ Location not enabled. Please tap "Turn on" when prompted, or enable Location in your phone settings.');
+            setIsTripActive(false);
+            isTripActiveRef.current = false;
+          } else {
+            setGpsError('📡 Reconnecting to GPS signal...');
+          }
           break;
+
         case error.TIMEOUT:
-          // Ignore timeout errors silently so watchPosition keeps retrying
-          // without displaying a scary error message to the user.
+          if (!hasReceivedFirstFixRef.current) {
+            // Waiting for user to tap "Turn on" or for satellites to acquire
+            setGpsError('📡 Connecting to GPS... If prompted, please tap "Turn on" to enable Location Accuracy.');
+          }
           break;
+
         default:
-          setGpsError('Unable to retrieve your location. Please check GPS settings.');
+          if (!hasReceivedFirstFixRef.current) {
+            setGpsError('Unable to retrieve your location. Please ensure location is enabled.');
+          }
       }
     };
 
-    // Phase 1: Fast initial fix using network/cell-tower location (low accuracy)
-    // This triggers the permission dialog and gets a location in 1-2 seconds.
+    // 1. Immediately register continuous watch tracking with high accuracy.
+    // When the user taps "Turn on" on the Android dialog, watchPosition receives the fix right away!
+    const watchOptions = {
+      enableHighAccuracy: true,
+      maximumAge: 5000,
+      timeout: 20000,
+    };
+    watchIdRef.current = navigator.geolocation.watchPosition(onSuccess, onError, watchOptions);
 
+    // 2. Immediate single-shot request to grab any cached/quick fix
     navigator.geolocation.getCurrentPosition(
-      (position) => {
-        onSuccess(position);
-        
-        // Phase 2: Switch to continuous high-accuracy satellite GPS tracking
-        watchIdRef.current = navigator.geolocation.watchPosition(onSuccess, onError, {
-          enableHighAccuracy: true,
-          maximumAge: 15000,
-          timeout: 20000,
-        });
+      (pos) => {
+        onSuccess(pos);
       },
-      (error) => {
-        // If permission was denied, stop trip entirely
-        if (error.code === error.PERMISSION_DENIED) {
-          onError(error);
-          setIsTripActive(false);
-          return;
-        }
-        
-        // Timed out — user may have just tapped "Turn On" in the Android system dialog.
-        // Retry once automatically with high-accuracy GPS.
-        setGpsError('📡 Getting your location... almost there!');
-        navigator.geolocation.getCurrentPosition(
-          (retryPos) => {
-            onSuccess(retryPos);
-            watchIdRef.current = navigator.geolocation.watchPosition(onSuccess, onError, {
-              enableHighAccuracy: true,
-              maximumAge: 15000,
-              timeout: 20000,
-            });
-          },
-          (retryError) => {
-            onError(retryError);
-            // Still start watching in background in case GPS wakes up
-            watchIdRef.current = navigator.geolocation.watchPosition(onSuccess, onError, {
-              enableHighAccuracy: true,
-              maximumAge: 15000,
-              timeout: 20000,
-            });
-          },
-          { enableHighAccuracy: true, timeout: 20000, maximumAge: 0 }
-        );
+      (err) => {
+        // Soft error, watchPosition will handle ongoing tracking
+        console.log('Initial getCurrentPosition probe:', err.message);
       },
-    { enableHighAccuracy: false, timeout: 30000, maximumAge: Infinity }
+      { enableHighAccuracy: true, maximumAge: 10000, timeout: 8000 }
     );
-  };
 
+    // 3. Proactive retries: when the user taps "Turn on", the hardware needs 1-3 seconds
+    // to warm up. A quick getCurrentPosition probe at 4s and 8s guarantees fast pickup.
+    const schedulePoke = (delayMs) => {
+      const timerId = setTimeout(() => {
+        if (!hasReceivedFirstFixRef.current && isTripActiveRef.current) {
+          navigator.geolocation.getCurrentPosition(
+            onSuccess,
+            () => {},
+            { enableHighAccuracy: true, maximumAge: 0, timeout: 8000 }
+          );
+        }
+      }, delayMs);
+      retryTimersRef.current.push(timerId);
+    };
+
+    schedulePoke(4000);
+    schedulePoke(8000);
+  };
 
   // 4. Stop Trip
   const handleStopTrip = () => {
+    isTripActiveRef.current = false;
+    hasReceivedFirstFixRef.current = false;
+    clearRetryTimers();
+
     if (watchIdRef.current !== null) {
       navigator.geolocation.clearWatch(watchIdRef.current);
       watchIdRef.current = null;
     }
     setIsTripActive(false);
     setIsSimulating(false);
+    setGpsError(null);
     handleStopAlarm();
   };
 
@@ -244,6 +288,7 @@ export default function App() {
   // Cleanup on unmount
   useEffect(() => {
     return () => {
+      clearRetryTimers();
       if (watchIdRef.current !== null) {
         navigator.geolocation.clearWatch(watchIdRef.current);
       }
