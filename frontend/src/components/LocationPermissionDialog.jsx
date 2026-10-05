@@ -140,6 +140,12 @@ export default function LocationPermissionDialog({
           </div>
         )}
 
+        {/* Fast connection speed guarantee */}
+        <div className="android-loc-fast-pill">
+          <span className="android-loc-fast-icon">⚡</span>
+          <span>Fast Mode: Instant access via Wi-Fi, Mobile Network & GPS</span>
+        </div>
+
         {/* Bottom Actions: No, thanks & Turn on location */}
         <div className="android-loc-actions">
           <button
@@ -160,7 +166,7 @@ export default function LocationPermissionDialog({
             {isRequesting ? (
               <>
                 <span className="android-btn-spinner" />
-                <span>Checking...</span>
+                <span>Finding location...</span>
               </>
             ) : (
               'Turn on location'

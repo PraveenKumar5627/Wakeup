@@ -1351,6 +1351,26 @@ body {
   padding: 0.2rem 0;
 }
 
+/* Fast mode speed notice */
+.android-loc-fast-pill {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  background: rgba(0, 191, 166, 0.12);
+  border: 1px solid rgba(0, 191, 166, 0.3);
+  border-radius: 9999px;
+  padding: 0.4rem 0.85rem;
+  font-size: 0.78rem;
+  color: #008775;
+  font-weight: 600;
+  margin-top: 0.35rem;
+  margin-bottom: 0.2rem;
+}
+
+.android-loc-fast-icon {
+  font-size: 0.95rem;
+}
+
 /* Actions Row: No, thanks & Turn on */
 .android-loc-actions {
   display: flex;
