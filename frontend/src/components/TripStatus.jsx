@@ -1,4 +1,5 @@
 import React from 'react';
+import { getGoogleMapsUrl } from './DestinationSearch';
 
 export default function TripStatus({
   destination,
@@ -76,12 +77,20 @@ export default function TripStatus({
         }}
         onClick={() => {
           if (currentLocation && destination) {
+            const destParam =
+              destination.name &&
+              destination.name !== 'Google Maps Destination' &&
+              destination.name !== 'Pinned Location' &&
+              destination.name !== 'Selected Coordinates' &&
+              !/^-?\d+(\.\d+)?[\s,]+-?\d+(\.\d+)?$/.test(destination.name)
+                ? encodeURIComponent(destination.name)
+                : `${destination.lat},${destination.lng}`;
             window.open(
-              `https://www.google.com/maps/dir/?api=1&origin=${currentLocation.lat},${currentLocation.lng}&destination=${destination.lat},${destination.lng}&travelmode=transit`,
+              `https://www.google.com/maps/dir/?api=1&origin=${currentLocation.lat},${currentLocation.lng}&destination=${destParam}&travelmode=transit`,
               '_blank'
             );
           } else if (destination) {
-            window.open(`https://www.google.com/maps?q=${destination.lat},${destination.lng}`, '_blank');
+            window.open(getGoogleMapsUrl(destination), '_blank');
           }
         }}
         title="View live transit route on Google Maps"

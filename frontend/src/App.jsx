@@ -413,6 +413,7 @@ export default function App() {
                 destination={destination}
                 setDestination={setDestination}
                 disabled={isTripActive}
+                userLocation={currentLocation}
               />
 
               <AlertDistance
