@@ -26,7 +26,7 @@
 
   --text-main: #263238;
   --text-muted: #607078;
-  --text-dim: #607078;
+  --text-dim: #a86f2e;
 
   --accent-blue: #00BFA6;
   --accent-indigo: #FF6B35;
@@ -52,7 +52,9 @@
 }
 
 /* Base Reset & Smooth Box Sizing */
-*, *::before, *::after {
+*,
+*::before,
+*::after {
   box-sizing: border-box;
   margin: 0;
   padding: 0;
@@ -71,7 +73,7 @@ body {
   color: var(--text-main);
   min-height: 100%;
   line-height: 1.5;
-  background-image: 
+  background-image:
     radial-gradient(circle at 15% 15%, rgba(192, 133, 82, 0.10) 0%, transparent 40%),
     radial-gradient(circle at 85% 85%, rgba(140, 90, 60, 0.08) 0%, transparent 45%);
   background-attachment: fixed;
@@ -82,7 +84,8 @@ body {
 /* Master Responsive App Container */
 .app-container {
   width: 100%;
-  max-width: 520px; /* Default for mobile */
+  max-width: 520px;
+  /* Default for mobile */
   margin: 0 auto;
   padding: max(1rem, env(safe-area-inset-top)) max(0.85rem, env(safe-area-inset-right)) max(2.5rem, env(safe-area-inset-bottom)) max(0.85rem, env(safe-area-inset-left));
   display: flex;
@@ -211,7 +214,8 @@ body {
   padding: 0.8rem 0.9rem 0.8rem 2.6rem;
   color: var(--text-main);
   font-family: inherit;
-  font-size: 16px; /* Prevents auto-zoom on mobile iOS Safari */
+  font-size: 16px;
+  /* Prevents auto-zoom on mobile iOS Safari */
   outline: none;
   min-height: var(--touch-target);
   transition: all 0.2s ease;
@@ -251,8 +255,15 @@ body {
 }
 
 @keyframes pinPulse {
-  0%, 100% { transform: translateY(-50%) scale(1); }
-  50%       { transform: translateY(-55%) scale(1.12); }
+
+  0%,
+  100% {
+    transform: translateY(-50%) scale(1);
+  }
+
+  50% {
+    transform: translateY(-55%) scale(1.12);
+  }
 }
 
 .to-badge {
@@ -284,7 +295,8 @@ body {
 /* White background, highly visible dark text, crisp slate placeholder */
 .destination-text-input {
   background: #ffffff !important;
-  color: #0f172a !important; /* Rich deep slate for high contrast */
+  color: #0f172a !important;
+  /* Rich deep slate for high contrast */
   font-weight: 600 !important;
   font-size: 0.95rem !important;
   border: 1.5px solid #cbd5e1 !important;
@@ -295,7 +307,8 @@ body {
 }
 
 .destination-text-input::placeholder {
-  color: #64748b !important; /* Clean slate placeholder text, clearly visible on white */
+  color: #64748b !important;
+  /* Clean slate placeholder text, clearly visible on white */
   font-weight: 500 !important;
   font-size: 0.88rem !important;
   opacity: 1 !important;
@@ -328,8 +341,15 @@ body {
 }
 
 @keyframes dropdownSlideIn {
-  from { opacity: 0; transform: translateY(-8px) scale(0.98); }
-  to   { opacity: 1; transform: translateY(0) scale(1); }
+  from {
+    opacity: 0;
+    transform: translateY(-8px) scale(0.98);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
 }
 
 .suggestion-item {
@@ -561,7 +581,8 @@ body {
 }
 
 /* Main Action Buttons (Primary / Danger) */
-.btn-primary, .btn-danger {
+.btn-primary,
+.btn-danger {
   width: 100%;
   border: none;
   border-radius: var(--radius-md);
@@ -658,9 +679,20 @@ body {
 }
 
 @keyframes pulse {
-  0% { transform: scale(0.9); opacity: 0.7; }
-  50% { transform: scale(1.3); opacity: 1; }
-  100% { transform: scale(0.9); opacity: 0.7; }
+  0% {
+    transform: scale(0.9);
+    opacity: 0.7;
+  }
+
+  50% {
+    transform: scale(1.3);
+    opacity: 1;
+  }
+
+  100% {
+    transform: scale(0.9);
+    opacity: 0.7;
+  }
 }
 
 /* Distance Hero Box */
@@ -687,8 +719,13 @@ body {
 }
 
 @keyframes shimmer {
-  0% { background-position: 100% 0; }
-  100% { background-position: -100% 0; }
+  0% {
+    background-position: 100% 0;
+  }
+
+  100% {
+    background-position: -100% 0;
+  }
 }
 
 .distance-label {
@@ -735,11 +772,12 @@ body {
 }
 
 .meta-box {
-  background: rgba(11, 15, 25, 0.55);
+  background: rgb(239 170 82 / 55%);
   border: 1px solid var(--border-subtle);
   padding: 0.75rem;
   border-radius: var(--radius-md);
-  min-width: 0; /* Prevents overflow */
+  min-width: 0;
+  /* Prevents overflow */
 }
 
 .meta-box-label {
@@ -900,13 +938,25 @@ body {
 }
 
 @keyframes alarmPulse {
-  0% { transform: scale(0.98); box-shadow: 0 0 25px rgba(255, 51, 102, 0.4); }
-  100% { transform: scale(1.02); box-shadow: 0 0 55px rgba(255, 51, 102, 0.9); }
+  0% {
+    transform: scale(0.98);
+    box-shadow: 0 0 25px rgba(255, 51, 102, 0.4);
+  }
+
+  100% {
+    transform: scale(1.02);
+    box-shadow: 0 0 55px rgba(255, 51, 102, 0.9);
+  }
 }
 
 @keyframes fadeIn {
-  from { opacity: 0; }
-  to { opacity: 1; }
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
 }
 
 .alarm-bell-icon {
@@ -917,10 +967,21 @@ body {
 }
 
 @keyframes ring {
-  0% { transform: rotate(0deg); }
-  25% { transform: rotate(15deg); }
-  75% { transform: rotate(-15deg); }
-  100% { transform: rotate(0deg); }
+  0% {
+    transform: rotate(0deg);
+  }
+
+  25% {
+    transform: rotate(15deg);
+  }
+
+  75% {
+    transform: rotate(-15deg);
+  }
+
+  100% {
+    transform: rotate(0deg);
+  }
 }
 
 .alarm-title {
@@ -1120,13 +1181,11 @@ body {
   width: 100%;
   height: 6px;
   border-radius: var(--radius-full);
-  background: linear-gradient(
-    to right,
-    var(--accent-blue) 0%,
-    var(--accent-blue) var(--fill-percent),
-    rgba(255, 255, 255, 0.1) var(--fill-percent),
-    rgba(255, 255, 255, 0.1) 100%
-  );
+  background: linear-gradient(to right,
+      var(--accent-blue) 0%,
+      var(--accent-blue) var(--fill-percent),
+      rgba(255, 255, 255, 0.1) var(--fill-percent),
+      rgba(255, 255, 255, 0.1) 100%);
   outline: none;
   cursor: pointer;
   transition: background 0.15s;
@@ -1145,14 +1204,14 @@ body {
   height: 22px;
   border-radius: 50%;
   background: var(--accent-blue);
-  box-shadow: 0 0 0 4px rgba(192, 133, 82, 0.18), 0 2px 6px rgba(0,0,0,0.4);
+  box-shadow: 0 0 0 4px rgba(192, 133, 82, 0.18), 0 2px 6px rgba(0, 0, 0, 0.4);
   transition: transform 0.15s, box-shadow 0.15s;
   cursor: pointer;
 }
 
 .distance-range::-webkit-slider-thumb:hover {
   transform: scale(1.2);
-  box-shadow: 0 0 0 6px rgba(192, 133, 82, 0.22), 0 2px 8px rgba(0,0,0,0.5);
+  box-shadow: 0 0 0 6px rgba(192, 133, 82, 0.22), 0 2px 8px rgba(0, 0, 0, 0.5);
 }
 
 /* Thumb — Firefox */
@@ -1626,7 +1685,10 @@ a:hover {
 }
 
 /* Make normal strong text dark instead of orange */
-.glass-card strong,
+.glass-card strong {
+  color: var(--accent-amber);
+}
+
 .card strong,
 .meta-box strong {
   color: #263238;
@@ -1828,14 +1890,70 @@ body {
 }
 
 @keyframes pulseGreen {
-  0% { box-shadow: 0 0 0 0 rgba(0, 191, 166, 0.6); }
-  70% { box-shadow: 0 0 0 7px rgba(0, 191, 166, 0); }
-  100% { box-shadow: 0 0 0 0 rgba(0, 191, 166, 0); }
+  0% {
+    box-shadow: 0 0 0 0 rgba(0, 191, 166, 0.6);
+  }
+
+  70% {
+    box-shadow: 0 0 0 7px rgba(0, 191, 166, 0);
+  }
+
+  100% {
+    box-shadow: 0 0 0 0 rgba(0, 191, 166, 0);
+  }
 }
 
 @keyframes pulseOrange {
-  0% { box-shadow: 0 0 0 0 rgba(255, 107, 53, 0.6); }
-  70% { box-shadow: 0 0 0 7px rgba(255, 107, 53, 0); }
-  100% { box-shadow: 0 0 0 0 rgba(255, 107, 53, 0); }
+  0% {
+    box-shadow: 0 0 0 0 rgba(255, 107, 53, 0.6);
+  }
+
+  70% {
+    box-shadow: 0 0 0 7px rgba(255, 107, 53, 0);
+  }
+
+  100% {
+    box-shadow: 0 0 0 0 rgba(255, 107, 53, 0);
+  }
 }
 
+/* Destination Map Marker & GPS Pulsing Styles */
+@keyframes gpsPulse {
+  0% {
+    transform: scale(0.9);
+    opacity: 0.9;
+  }
+
+  70% {
+    transform: scale(2.4);
+    opacity: 0;
+  }
+
+  100% {
+    transform: scale(2.4);
+    opacity: 0;
+  }
+}
+
+.custom-destination-marker-wrap {
+  background: transparent !important;
+  border: none !important;
+}
+
+.custom-user-gps-marker {
+  background: transparent !important;
+  border: none !important;
+}
+
+/* Leaflet Dark Theme Popup Styling */
+.leaflet-popup-content-wrapper {
+  background: rgba(15, 23, 42, 0.96) !important;
+  color: #f8fafc !important;
+  border-radius: 10px !important;
+  border: 1px solid rgba(255, 255, 255, 0.12) !important;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.6) !important;
+}
+
+.leaflet-popup-tip {
+  background: rgba(15, 23, 42, 0.96) !important;
+}

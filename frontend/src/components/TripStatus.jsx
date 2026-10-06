@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { getGoogleMapsUrl } from './DestinationSearch';
 
 export default function TripStatus({
@@ -11,6 +11,7 @@ export default function TripStatus({
   onStopTrip,
   isSimulating,
 }) {
+  const [showTripMap, setShowTripMap] = useState(true);
   const isRoadRoute = routeDetails?.routeType === 'road';
   const durationText = routeDetails?.durationText;
   const straightLineKm = routeDetails?.straightLineKm;
@@ -119,6 +120,57 @@ export default function TripStatus({
         </div>
       )}
 
+      {/* Live Map Toggle & Container */}
+      <div style={{ marginTop: '0.4rem' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.35rem' }}>
+          <span style={{ fontSize: '0.78rem', color: 'var(--text-dim)', fontWeight: 600 }}>
+            🗺️ Live Trip Navigation Map
+          </span>
+          <button
+            type="button"
+            className="preset-chip"
+            style={{
+              background: 'rgba(255, 255, 255, 0.05)',
+              padding: '0.2rem 0.5rem',
+              fontSize: '0.72rem',
+            }}
+            onClick={() => setShowTripMap(!showTripMap)}
+          >
+            {showTripMap ? 'Hide Map' : '📍 Show Map'}
+          </button>
+        </div>
+
+        {showTripMap && (
+          <div
+            style={{
+              borderRadius: 'var(--radius-md)',
+              overflow: 'hidden',
+              height: '190px',
+              border: '1px solid rgba(56, 189, 248, 0.3)',
+              background: '#0b1120',
+              marginTop: '0.2rem',
+            }}
+          >
+            <iframe
+              title={`Google Maps Route to ${destination?.name || 'Destination'}`}
+              width="100%"
+              height="100%"
+              frameBorder="0"
+              scrolling="no"
+              marginHeight="0"
+              marginWidth="0"
+              src={
+                currentLocation
+                  ? `https://maps.google.com/maps?saddr=${currentLocation.lat},${currentLocation.lng}&daddr=${destination.lat},${destination.lng}&output=embed`
+                  : `https://maps.google.com/maps?q=${destination.lat},${destination.lng}&z=15&output=embed`
+              }
+              style={{ border: 0, width: '100%', height: '100%' }}
+              loading="lazy"
+            />
+          </div>
+        )}
+      </div>
+
       {/* Google Maps Live Driving Route Button */}
       <button
         type="button"
@@ -135,16 +187,8 @@ export default function TripStatus({
         }}
         onClick={() => {
           if (currentLocation && destination) {
-            const destParam =
-              destination.name &&
-              destination.name !== 'Google Maps Destination' &&
-              destination.name !== 'Pinned Location' &&
-              destination.name !== 'Selected Coordinates' &&
-              !/^-?\d+(\.\d+)?[\s,]+-?\d+(\.\d+)?$/.test(destination.name)
-                ? encodeURIComponent(destination.name)
-                : `${destination.lat},${destination.lng}`;
             window.open(
-              `https://www.google.com/maps/dir/?api=1&origin=${currentLocation.lat},${currentLocation.lng}&destination=${destParam}&travelmode=driving`,
+              `https://www.google.com/maps/dir/?api=1&origin=${currentLocation.lat},${currentLocation.lng}&destination=${destination.lat},${destination.lng}&travelmode=driving`,
               '_blank'
             );
           } else if (destination) {

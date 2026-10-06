@@ -229,28 +229,20 @@ export function getGoogleMapsUrl(dest) {
   if (!dest) return 'https://www.google.com/maps';
 
   const name = (dest.name || '').trim();
-  const hasCoords = dest.lat != null && dest.lng != null;
+  const hasCoords = dest.lat != null && dest.lng != null && !isNaN(Number(dest.lat)) && !isNaN(Number(dest.lng));
 
-  // Check if name is generic or raw coordinates
-  const isGenericOrCoords =
-    !name ||
-    name === 'Google Maps Destination' ||
-    name === 'Pinned Location' ||
-    name === 'Selected Coordinates' ||
-    /^-?\d+(\.\d+)?[\s,]+-?\d+(\.\d+)?$/.test(name);
+  // If coordinates exist, query by exact coordinates so Google Maps ALWAYS drops a pin!
+  if (hasCoords) {
+    return `https://www.google.com/maps/search/?api=1&query=${Number(dest.lat)},${Number(dest.lng)}`;
+  }
 
-  if (!isGenericOrCoords) {
-    // If destination has an address/city that isn't already in the name, append it for pinpoint accuracy
+  // Fallback to name search if coordinates are missing
+  if (name) {
     let queryText = name;
     if (dest.address && !name.toLowerCase().includes(dest.address.toLowerCase())) {
       queryText = `${name}, ${dest.address}`;
     }
     return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(queryText)}`;
-  }
-
-  // Fallback to coordinates
-  if (hasCoords) {
-    return `https://www.google.com/maps/search/?api=1&query=${dest.lat},${dest.lng}`;
   }
 
   return 'https://www.google.com/maps';
@@ -297,6 +289,7 @@ export default function DestinationSearch({
   setDestination,
   disabled,
   userLocation,
+  alertDistance = 3000,
 }) {
   const [query, setQuery] = useState('');
   const [isSearching, setIsSearching] = useState(false);
@@ -1330,47 +1323,98 @@ export default function DestinationSearch({
                   fontSize: '0.75rem',
                 }}
                 onClick={() => setShowMapEmbed(!showMapEmbed)}
-                title="Toggle Google Maps embedded preview"
+                title="Toggle Google Maps preview"
               >
-                {showMapEmbed ? 'Hide Map' : 'Show Map'}
+                {showMapEmbed ? 'Hide Map' : '📍 Show Google Map'}
               </button>
             </div>
           </div>
 
-          {/* Embedded Google Maps Preview */}
+          {/* Pinned Google Maps Destination Preview */}
           {showMapEmbed && (
             <div
               style={{
-                marginTop: '0.6rem',
+                marginTop: '0.65rem',
                 borderRadius: 'var(--radius-md)',
                 overflow: 'hidden',
-                height: '190px',
-                border: '1px solid var(--border-subtle)',
-                background: '#1e293b',
+                border: '1px solid rgba(239, 68, 68, 0.35)',
+                background: '#0b1120',
+                boxShadow: '0 8px 24px rgba(0, 0, 0, 0.45)',
               }}
             >
-              <iframe
-                title="Google Maps Destination Preview"
-                width="100%"
-                height="100%"
-                frameBorder="0"
-                scrolling="no"
-                marginHeight="0"
-                marginWidth="0"
-                src={`https://maps.google.com/maps?q=${encodeURIComponent(
-                  destination.name &&
-                  destination.name !== 'Google Maps Destination' &&
-                  destination.name !== 'Pinned Location' &&
-                  destination.name !== 'Selected Coordinates' &&
-                  !/^-?\d+(\.\d+)?[\s,]+-?\d+(\.\d+)?$/.test(destination.name)
-                    ? (destination.address && !destination.name.toLowerCase().includes(destination.address.toLowerCase())
-                        ? `${destination.name}, ${destination.address}`
-                        : destination.name)
-                    : `${destination.lat},${destination.lng}`
-                )}&z=15&output=embed`}
-                style={{ border: 0, width: '100%', height: '100%' }}
-                loading="lazy"
-              />
+              {/* Header above Google Map showing confirmed pin details */}
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  padding: '0.45rem 0.75rem',
+                  background: 'rgba(15, 23, 42, 0.95)',
+                  borderBottom: '1px solid rgba(255, 255, 255, 0.08)',
+                  fontSize: '0.78rem',
+                  flexWrap: 'wrap',
+                  gap: '0.3rem',
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                  <span style={{ color: '#ef4444', fontWeight: 800 }}>📍 PINNED DESTINATION</span>
+                  <span style={{ color: 'var(--text-dim)' }}>•</span>
+                  <span style={{ color: '#fff', fontWeight: 700 }}>{destination.name}</span>
+                </div>
+                <div style={{ fontSize: '0.72rem', color: 'var(--accent-emerald)', fontFamily: 'var(--font-mono)' }}>
+                  {Number(destination.lat).toFixed(4)}°, {Number(destination.lng).toFixed(4)}°
+                </div>
+              </div>
+
+              {/* Google Maps iFrame with exact coordinates pinned */}
+              <div style={{ height: '220px', width: '100%', position: 'relative' }}>
+                <iframe
+                  title={`Google Maps - Pinned at ${destination.name}`}
+                  width="100%"
+                  height="100%"
+                  frameBorder="0"
+                  scrolling="no"
+                  marginHeight="0"
+                  marginWidth="0"
+                  src={`https://maps.google.com/maps?q=${destination.lat},${destination.lng}&z=15&output=embed`}
+                  style={{ border: 0, width: '100%', height: '100%' }}
+                  loading="lazy"
+                />
+              </div>
+
+              {/* Bottom bar with open in Google Maps link */}
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  padding: '0.4rem 0.75rem',
+                  background: 'rgba(15, 23, 42, 0.85)',
+                  borderTop: '1px solid rgba(255, 255, 255, 0.06)',
+                  fontSize: '0.72rem',
+                  color: 'var(--text-muted)',
+                  flexWrap: 'wrap',
+                  gap: '0.3rem',
+                }}
+              >
+                <span>📍 Red pin marks your confirmed destination on Google Maps</span>
+                <button
+                  type="button"
+                  onClick={() => window.open(getGoogleMapsUrl(destination), '_blank')}
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    color: 'var(--accent-blue)',
+                    fontSize: '0.72rem',
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    padding: 0,
+                    textDecoration: 'underline',
+                  }}
+                >
+                  Open Full Google Maps ↗
+                </button>
+              </div>
             </div>
           )}
         </div>
