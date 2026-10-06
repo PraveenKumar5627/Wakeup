@@ -5,7 +5,12 @@ current GPS location and their destination using the Haversine formula, and
 determines if the user has reached their chosen alert distance threshold.
 """
 
+import json
+import logging
 import math
+import time
+from typing import Optional, Tuple
+import urllib.request
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
@@ -80,13 +85,17 @@ class DistanceResponse(BaseModel):
     """
     Output schema returned to the React frontend.
     """
-    distance_km: float = Field(..., description="Calculated straight-line distance in kilometers")
+    distance_km: float = Field(..., description="Calculated road or straight-line distance in kilometers")
     alert: bool = Field(..., description="True if distance_km <= alert_distance, otherwise False")
     message: str = Field(..., description="Human-readable description of current trip status")
+    route_type: str = Field(default="road", description="'road' for driving distance, 'straight_line' for fallback")
+    duration_min: Optional[float] = Field(default=None, description="Estimated driving time in minutes")
+    duration_text: Optional[str] = Field(default=None, description="Formatted driving time (e.g. '5 hr 1 min')")
+    straight_line_km: Optional[float] = Field(default=None, description="Straight-line spherical distance for comparison")
 
 
 # -----------------------------------------------------------------------------
-# 4. Haversine Distance Calculation Formula
+# 4. Haversine Distance Calculation Formula (Spherical Fallback)
 # -----------------------------------------------------------------------------
 def haversine_distance(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
     """
@@ -100,7 +109,7 @@ def haversine_distance(lat1: float, lon1: float, lat2: float, lon2: float) -> fl
       c = 2 * atan2(√a, √(1−a))
       d = R * c
 
-    Note: This computes straight-line spherical distance, not driving/road distance.
+    Note: Computes straight-line spherical distance ("as the crow flies").
     """
     EARTH_RADIUS_KM = 6371.0
 
@@ -126,7 +135,90 @@ def haversine_distance(lat1: float, lon1: float, lat2: float, lon2: float) -> fl
 
 
 # -----------------------------------------------------------------------------
-# 5. API Endpoints
+# 5. Road Driving Distance Calculation (OSRM - Matches Google Maps Driving Route)
+# -----------------------------------------------------------------------------
+_ROUTING_CACHE = {}
+_CACHE_TTL_SECONDS = 30.0
+
+
+def format_duration(duration_minutes: float) -> str:
+    """Format minutes into human-readable duration (e.g. '5 hr 1 min' or '45 min')."""
+    total_mins = int(round(duration_minutes))
+    if total_mins < 60:
+        return f"{total_mins} min"
+    hours = total_mins // 60
+    mins = total_mins % 60
+    if mins == 0:
+        return f"{hours} hr"
+    return f"{hours} hr {mins} min"
+
+
+def get_road_distance(
+    lat1: float, lon1: float, lat2: float, lon2: float
+) -> Tuple[float, Optional[float], Optional[str], str]:
+    """
+    Calculate actual driving/road distance between two points using
+    the OpenStreetMap OSRM routing engine (matches Google Maps driving route).
+    Falls back gracefully to straight-line Haversine distance if the routing
+    engine is unreachable or if no road connects the points.
+
+    Returns:
+        (distance_km, duration_min, duration_text, route_type)
+        where route_type is 'road' or 'straight_line'
+    """
+    # If points are virtually identical (< 10 meters apart), return 0.0
+    if abs(lat1 - lat2) < 0.0001 and abs(lon1 - lon2) < 0.0001:
+        return 0.0, 0.0, "0 min", "road"
+
+    # Cache lookup by rounded coordinates (~100m precision)
+    cache_key = (round(lat1, 3), round(lon1, 3), round(lat2, 3), round(lon2, 3))
+    now = time.time()
+    if cache_key in _ROUTING_CACHE:
+        cached_time, cached_dist, cached_dur, cached_text = _ROUTING_CACHE[cache_key]
+        if now - cached_time < _CACHE_TTL_SECONDS:
+            return cached_dist, cached_dur, cached_text, "road"
+
+    # Try OSRM driving route API
+    # Format: lon,lat;lon,lat
+    url = (
+        f"https://router.project-osrm.org/route/v1/driving/"
+        f"{lon1:.6f},{lat1:.6f};{lon2:.6f},{lat2:.6f}"
+        f"?overview=false"
+    )
+
+    try:
+        req = urllib.request.Request(
+            url,
+            headers={
+                "User-Agent": "TravelDestinationAlarm/2.0 (FastAPI Backend; GPS Navigation)",
+                "Accept": "application/json",
+            },
+        )
+        with urllib.request.urlopen(req, timeout=4.0) as resp:
+            if resp.status == 200:
+                data = json.loads(resp.read().decode("utf-8"))
+                if data.get("code") == "Ok" and data.get("routes"):
+                    primary_route = data["routes"][0]
+                    distance_meters = float(primary_route["distance"])
+                    duration_seconds = float(primary_route.get("duration", 0.0))
+
+                    distance_km = round(distance_meters / 1000.0, 2)
+                    duration_min = round(duration_seconds / 60.0, 1)
+                    duration_text = format_duration(duration_min)
+
+                    # Store in cache
+                    _ROUTING_CACHE[cache_key] = (now, distance_km, duration_min, duration_text)
+                    return distance_km, duration_min, duration_text, "road"
+    except Exception as exc:
+        logging.warning("OSRM road routing unavailable, falling back to Haversine: %s", exc)
+
+    # Fallback to straight-line spherical distance
+    straight_dist = haversine_distance(lat1, lon1, lat2, lon2)
+    return straight_dist, None, None, "straight_line"
+
+
+# -----------------------------------------------------------------------------
+# 6. API Endpoints
 # -----------------------------------------------------------------------------
 @app.get("/")
 def read_root():
@@ -157,28 +249,38 @@ def calculate_distance(payload: DistanceRequest):
     """
     Main endpoint called by the React frontend while a trip is active.
     Receives current GPS coordinates, destination coordinates, and alert distance.
-    Calculates the Haversine distance and checks if an alert should trigger.
+    Calculates actual road driving distance (matching Google Maps) and checks
+    if an alert should trigger.
     """
     try:
-        # Calculate distance in kilometers
-        distance_km = haversine_distance(
+        straight_km = haversine_distance(
             payload.current_latitude,
             payload.current_longitude,
             payload.destination_latitude,
             payload.destination_longitude,
         )
 
-        # Check if the user is at or within the alert distance
-        is_alert = distance_km <= payload.alert_distance
+        distance_km, duration_min, duration_text, route_type = get_road_distance(
+            payload.current_latitude,
+            payload.current_longitude,
+            payload.destination_latitude,
+            payload.destination_longitude,
+        )
+
+        # Trigger alert if either road distance or straight-line distance is within threshold
+        is_alert = (distance_km <= payload.alert_distance) or (straight_km <= payload.alert_distance)
+
+        time_part = f" (~{duration_text})" if duration_text else ""
+        route_label = "road driving distance" if route_type == "road" else "straight-line"
 
         if is_alert:
             message = (
-                f"WAKE UP! Your destination is approximately {distance_km} km away "
+                f"WAKE UP! Your destination is approximately {distance_km} km away {time_part} "
                 f"(alert threshold: {payload.alert_distance} km). Get ready to get down!"
             )
         else:
             message = (
-                f"On the way. You are {distance_km} km from destination. "
+                f"On the way. You are {distance_km} km ({route_label}){time_part} from destination. "
                 f"Alarm will trigger at {payload.alert_distance} km."
             )
 
@@ -186,6 +288,10 @@ def calculate_distance(payload: DistanceRequest):
             distance_km=distance_km,
             alert=is_alert,
             message=message,
+            route_type=route_type,
+            duration_min=duration_min,
+            duration_text=duration_text,
+            straight_line_km=straight_km,
         )
 
     except Exception as exc:

@@ -115,6 +115,13 @@ const KNOWN_PLACES = [
     lng: 72.8478,
     city: 'Mumbai',
   },
+  {
+    name: 'Parikkal',
+    aliases: ['parikkal', 'parikkal temple', 'parikkal bus stop', 'parikal'],
+    lat: 11.7851,
+    lng: 79.3671,
+    city: 'Villupuram / Ulundurpet, Tamil Nadu',
+  },
 ];
 
 /**

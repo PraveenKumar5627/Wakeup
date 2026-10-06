@@ -109,17 +109,19 @@ Make sure you have the following installed on your machine:
 
 ## 🔬 How the Application Works
 
-### 1. Haversine Distance Formula
-The straight-line spherical distance between your current GPS coordinates $(lat_1, lon_1)$ and your destination $(lat_2, lon_2)$ is calculated using the Haversine formula:
+### 1. Road Driving Distance Calculation (Google Maps Navigation Match)
+The application calculates the **actual road driving distance** between your current GPS coordinates $(lat_1, lon_1)$ and your destination $(lat_2, lon_2)$ using the **OpenStreetMap OSRM Routing Engine**:
+- Computes real highway, expressway, and road transit distances matching Google Maps driving directions (e.g. 314 km along roads instead of 267 km straight line across mountains).
+- Returns estimated driving travel time (e.g. `~5 hr 1 min`).
+- Automatically falls back gracefully to spherical **Haversine formula** if offline or routing is temporarily unreachable.
 
+### 2. Haversine Formula (Spherical Fallback & Safety Buffer)
+When network routing is unavailable, distance is calculated using the spherical Haversine formula:
 $$\Delta\phi = \text{radians}(lat_2 - lat_1)$$
 $$\Delta\lambda = \text{radians}(lon_2 - lon_1)$$
 $$a = \sin^2\left(\frac{\Delta\phi}{2}\right) + \cos(\text{radians}(lat_1)) \cdot \cos(\text{radians}(lat_2)) \cdot \sin^2\left(\frac{\Delta\lambda}{2}\right)$$
 $$c = 2 \cdot \text{atan2}(\sqrt{a}, \sqrt{1 - a})$$
 $$d = R \cdot c \quad (\text{where } R = 6371 \text{ km})$$
-
-> **Important Limitation**:
-> The Haversine formula calculates straight-line (crow flies) distance, not road distance. In future updates, this can be integrated with route mapping services (like Google Maps Routes API or OSRM) for turn-by-turn road distance.
 
 ### 2. Browser Geolocation API
 The frontend uses `navigator.geolocation.watchPosition` to continuously listen for live GPS coordinates from your device's built-in GPS sensor. The backend never attempts to access your phone's GPS directly; your browser sends coordinates to the backend via POST requests.

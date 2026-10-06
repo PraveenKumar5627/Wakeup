@@ -5,7 +5,7 @@ Tests the Haversine formula calculation, FastAPI endpoints, input validation, an
 
 import pytest
 from fastapi.testclient import TestClient
-from main import app, haversine_distance
+from main import app, haversine_distance, get_road_distance
 
 client = TestClient(app)
 
@@ -23,6 +23,16 @@ def test_haversine_known_locations():
     """
     dist = haversine_distance(13.0827, 80.2707, 12.9941, 80.1709)
     assert 14.0 <= dist <= 16.0
+
+
+def test_road_distance_known_route():
+    """
+    Test road driving distance between Chennai Central and Egmore.
+    Road distance is ~3.1 to 3.3 km, route_type must be 'road'.
+    """
+    dist, duration, dur_text, route_type = get_road_distance(13.0827, 80.2707, 13.0784, 80.2608)
+    assert 2.5 <= dist <= 4.0
+    assert route_type == "road"
 
 
 def test_haversine_equator_longitude():
@@ -52,21 +62,21 @@ def test_api_health():
 def test_calculate_distance_alert_triggered():
     """
     When distance <= alert_distance, alert must be True.
-    Chennai Central to Egmore is ~1.5 km straight line.
-    Alert distance = 3 km.
+    Chennai Central to Egmore is ~3.17 km road distance.
+    Alert distance = 5 km.
     """
     payload = {
         "current_latitude": 13.0827,
         "current_longitude": 80.2707,
         "destination_latitude": 13.0784,
         "destination_longitude": 80.2608,
-        "alert_distance": 3.0,
+        "alert_distance": 5.0,
     }
     response = client.post("/calculate-distance", json=payload)
     assert response.status_code == 200
     data = response.json()
     assert "distance_km" in data
-    assert data["distance_km"] < 3.0
+    assert data["distance_km"] < 5.0
     assert data["alert"] is True
     assert "WAKE UP" in data["message"]
 

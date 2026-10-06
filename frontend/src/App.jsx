@@ -25,6 +25,11 @@ export default function App() {
   const [isTripActive, setIsTripActive] = useState(false);
   const [currentLocation, setCurrentLocation] = useState(null);
   const [remainingDistance, setRemainingDistance] = useState(null);
+  const [routeDetails, setRouteDetails] = useState({
+    routeType: 'road',
+    durationText: '',
+    straightLineKm: null,
+  });
   const [lastUpdated, setLastUpdated] = useState('');
   const [gpsError, setGpsError] = useState(null);
   const [backendError, setBackendError] = useState(null);
@@ -57,35 +62,100 @@ export default function App() {
     }
   };
 
-  // Pre-warm user location silently if permission was already granted previously
-  useEffect(() => {
-    if (typeof window !== 'undefined' && 'geolocation' in navigator) {
-      if (navigator.permissions && navigator.permissions.query) {
-        navigator.permissions
-          .query({ name: 'geolocation' })
-          .then((status) => {
-            if (status.state === 'granted') {
-              setLocationStatus('granted');
-              navigator.geolocation.getCurrentPosition(
-                (position) => {
-                  const { latitude, longitude } = position.coords;
-                  setCurrentLocation({ lat: latitude, lng: longitude });
-                  lastLocationTimestampRef.current = Date.now();
-                  setLastUpdated(new Date().toLocaleTimeString());
-                },
-                () => {},
-                {
-                  enableHighAccuracy: false,
-                  timeout: 3000,
-                  maximumAge: 300000, // 5 min cached
-                }
-              );
-            }
-          })
-          .catch(() => {});
+  /**
+   * checkDeviceLocation:
+   * Directly, reliably, and quickly checks whether the device's location is ON or OFF.
+   *
+   * Crucial rule: MUST use enableHighAccuracy: false!
+   * On Android, enableHighAccuracy: false queries standard device location (GPS/Network)
+   * WITHOUT triggering the invasive Google Location Accuracy modal that hangs on "Checking...".
+   */
+  const checkDeviceLocation = (isUserAction = false) => {
+    return new Promise((resolve) => {
+      if (typeof window === 'undefined' || !('geolocation' in navigator)) {
+        setLocationStatus('unavailable');
+        setLocationError('Geolocation is not supported by your browser.');
+        resolve(null);
+        return;
       }
-    }
-  }, []);
+
+      setIsRequestingLocation(true);
+      setLocationStatus('requesting');
+      setLocationError(null);
+      setGpsError(null);
+
+      let isDone = false;
+
+      const finishSuccess = (position) => {
+        if (isDone) return;
+        isDone = true;
+        const { latitude, longitude } = position.coords;
+        lastLocationTimestampRef.current = Date.now();
+        const timeStr = new Date().toLocaleTimeString();
+        setCurrentLocation({ lat: latitude, lng: longitude });
+        setLastUpdated(timeStr);
+        setLocationStatus('granted');
+        setIsRequestingLocation(false);
+        setIsLocationDialogOpen(false);
+        setLocationError(null);
+        setGpsError(null);
+        resolve(position);
+      };
+
+      const finishError = (error) => {
+        if (isDone) return;
+        isDone = true;
+        console.warn('checkDeviceLocation error:', error);
+        setIsRequestingLocation(false);
+        let msg = '';
+        if (error.code === 1) {
+          // PERMISSION_DENIED
+          setLocationStatus('denied');
+          msg = 'Browser location permission denied. Tap 🔒 in address bar → Site Settings → Allow Location.';
+        } else if (error.code === 2) {
+          // POSITION_UNAVAILABLE - Device location toggle is OFF
+          setLocationStatus('unavailable');
+          msg = 'Device location is turned OFF. Please swipe down from top of screen, turn ON Location, and tap Check Location.';
+        } else if (error.code === 3) {
+          // TIMEOUT
+          setLocationStatus('unavailable');
+          msg = 'Location check timed out. Please check that phone Location toggle is ON and tap Check Location.';
+        } else {
+          setLocationStatus('unavailable');
+          msg = error.message || 'Unable to detect device location.';
+        }
+        setLocationError(msg);
+        resolve(null);
+      };
+
+      navigator.geolocation.getCurrentPosition(
+        finishSuccess,
+        finishError,
+        {
+          enableHighAccuracy: false, // Standard device location only - NO system prompt!
+          timeout: 8000,
+          maximumAge: 30000,
+        }
+      );
+    });
+  };
+
+  // Automatically check whether device location is ON on page load & tab focus
+  useEffect(() => {
+    checkDeviceLocation(false);
+
+    // Auto-check whenever user returns from phone settings to the browser tab!
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible' && !isTripActive) {
+        checkDeviceLocation(false);
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibility);
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibility);
+    };
+  }, [isTripActive]);
 
   // 1. Periodically check backend health
   useEffect(() => {
@@ -113,6 +183,11 @@ export default function App() {
       });
 
       setRemainingDistance(result.distance_km);
+      setRouteDetails({
+        routeType: result.route_type || 'road',
+        durationText: result.duration_text || (result.duration_min ? `${Math.round(result.duration_min)} min` : ''),
+        straightLineKm: result.straight_line_km || null,
+      });
       setLastUpdated(new Date().toLocaleTimeString());
 
       // If backend reports alert threshold reached, sound the alarm!
@@ -139,21 +214,21 @@ export default function App() {
     };
 
     const onWatchError = (error) => {
-      console.warn('Live tracking warning:', error);
-      // Ignore silent timeouts during active transit
+      console.warn('Live tracking notice:', error);
       if (error.code === error.TIMEOUT) return;
       if (error.code === error.POSITION_UNAVAILABLE) {
         setGpsError('📡 Fine-tuning satellite GPS signal...');
       }
     };
 
+    // enableHighAccuracy: false prevents prompting the user with the GLA system dialog during active transit!
     watchIdRef.current = navigator.geolocation.watchPosition(
       onWatchSuccess,
       onWatchError,
       {
-        enableHighAccuracy: true,
+        enableHighAccuracy: false,
         timeout: 15000,
-        maximumAge: 3000,
+        maximumAge: 4000,
       }
     );
   };
@@ -178,120 +253,10 @@ export default function App() {
   };
 
   /**
-   * requestCurrentLocation:
-   * Fast-first hybrid geolocation strategy:
-   * 1. If recent location is already cached in memory (< 20 seconds old), returns it in 0ms!
-   * 2. Ultra-fast initial location (Tier 1):
-   *    Requests cached / network position with enableHighAccuracy: false and maximumAge: 120000.
-   *    On Android, when device location is on, this returns coordinates in ~50-250ms without
-   *    waiting for satellite locks or triggering slow Google Location Accuracy checking prompts.
-   * 3. Parallel high-accuracy request (Tier 2):
-   *    Runs with a 5.5s timeout. Whichever resolves first delivers the location immediately.
-   * 4. Background live watch:
-   *    Once resolved, startLiveWatch() runs in the background with continuous high-accuracy GPS
-   *    so satellite updates refine accuracy dynamically without blocking the user.
-   */
-  const requestCurrentLocation = () => {
-    return new Promise((resolve, reject) => {
-      if (!('geolocation' in navigator)) {
-        const err = new Error('Geolocation is not supported by your browser.');
-        err.code = 2; // POSITION_UNAVAILABLE
-        reject(err);
-        return;
-      }
-
-      // If we already have a recent location (< 25s old), return immediately!
-      if (
-        currentLocation &&
-        lastLocationTimestampRef.current &&
-        Date.now() - lastLocationTimestampRef.current < 25000
-      ) {
-        resolve({
-          coords: {
-            latitude: currentLocation.lat,
-            longitude: currentLocation.lng,
-          },
-        });
-        return;
-      }
-
-      // If running inside a supported native Android wrapper (Capacitor/Cordova/Android bridge),
-      // invoke the native settings/resolution intent.
-      try {
-        if (window.Capacitor?.Plugins?.LocationSettings) {
-          window.Capacitor.Plugins.LocationSettings.enable();
-        } else if (window.Android?.openLocationSettings) {
-          window.Android.openLocationSettings();
-        }
-      } catch (e) {
-        console.warn('Native wrapper call not available:', e);
-      }
-
-      let isResolved = false;
-
-      const handleSuccess = (position) => {
-        if (!isResolved) {
-          isResolved = true;
-          lastLocationTimestampRef.current = Date.now();
-          resolve(position);
-        }
-      };
-
-      const handleError = (error) => {
-        if (!isResolved) {
-          isResolved = true;
-          reject(error);
-        }
-      };
-
-      // TIER 1: Ultra-fast low-accuracy / cached fetch (instant sub-second resolution)
-      // When Location is ON, this returns cellular/Wi-Fi/cached GPS in ~100-250ms!
-      navigator.geolocation.getCurrentPosition(
-        handleSuccess,
-        (fastErr) => {
-          console.warn('Fast geolocation attempt bypassed, waiting for GPS:', fastErr);
-        },
-        {
-          enableHighAccuracy: false,
-          timeout: 2500,
-          maximumAge: 120000,
-        }
-      );
-
-      // TIER 2: High-accuracy request in parallel
-      navigator.geolocation.getCurrentPosition(
-        handleSuccess,
-        (highErr) => {
-          console.warn('High accuracy attempt error:', highErr);
-          // If high-accuracy errors and fast tier hasn't resolved within 3s, reject
-          setTimeout(() => {
-            if (!isResolved) {
-              handleError(highErr);
-            }
-          }, 2600);
-        },
-        {
-          enableHighAccuracy: true,
-          timeout: 5500,
-          maximumAge: 30000,
-        }
-      );
-
-      // Safety cutoff timer: NEVER let the UI hang on "Checking..." for more than 6s
-      setTimeout(() => {
-        if (!isResolved) {
-          const timeoutErr = new Error('Location check timed out. Please verify Location toggle is on in Android settings.');
-          timeoutErr.code = 3;
-          handleError(timeoutErr);
-        }
-      }, 6000);
-    });
-  };
-
-  /**
    * handleStartTrip:
    * Triggered when the user clicks START TRIP.
-   * Checks permissions and either starts tracking or presents the location dialog.
+   * If location is already verified ON, starts immediately!
+   * Otherwise verifies location state and starts trip if ON.
    */
   const handleStartTrip = async () => {
     if (!destination) {
@@ -299,83 +264,28 @@ export default function App() {
       return;
     }
 
-    if (isRequestingLocation) {
-      return; // Prevent duplicate requests
-    }
+    if (isRequestingLocation) return;
 
-    // 1. Instant Start: If we already have a recent location (< 2 minutes old), start immediately!
+    // 1. If location is already verified ON and recent (< 2 min), start immediately!
     if (
       currentLocation &&
       lastLocationTimestampRef.current &&
       Date.now() - lastLocationTimestampRef.current < 120000
     ) {
-      setLocationStatus('granted');
-      setIsRequestingLocation(false);
-      setIsLocationDialogOpen(false);
-      setLocationError(null);
-      setGpsError(null);
-      setIsTripActive(true);
-
-      syncLocationWithBackend(currentLocation.lat, currentLocation.lng, destination, alertDistance);
-      startLiveWatch();
+      onLocationSuccess({
+        coords: {
+          latitude: currentLocation.lat,
+          longitude: currentLocation.lng,
+        },
+      });
       return;
     }
 
-    // 2. Check browser permissions state if explicitly blocked
-    if (navigator.permissions && navigator.permissions.query) {
-      try {
-        const perm = await navigator.permissions.query({ name: 'geolocation' });
-        if (perm.state === 'denied') {
-          setLocationStatus('denied');
-          setLocationError(
-            'Browser location permission is blocked. Tap the 🔒 lock icon in your address bar to allow location.'
-          );
-          setIsLocationDialogOpen(true);
-          return;
-        }
-      } catch {
-        // Permissions API unsupported or failed, continue directly
-      }
-    }
-
-    // Reset error states and stop any existing tracker
-    stopAllTracking();
-    setGpsError(null);
-    setBackendError(null);
-    setIsTripActive(false);
-    setIsSimulating(false);
-    setLocationError(null);
-
-    setIsRequestingLocation(true);
-    setLocationStatus('requesting');
-    setGpsError('⚡ Connecting to your location quickly...');
-
-    try {
-      const position = await requestCurrentLocation();
-      onLocationSuccess(position);
-    } catch (error) {
-      console.warn('Geolocation request failed:', error);
-      setIsRequestingLocation(false);
-      stopAllTracking();
-      setIsTripActive(false);
-      setGpsError(null);
-
-      let msg = '';
-      if (error.code === 1) {
-        setLocationStatus('denied');
-        msg = 'Location permission was denied in your browser settings. Please allow location access.';
-      } else if (error.code === 2) {
-        setLocationStatus('unavailable');
-        msg = 'Device location is turned off. Please ensure Location is enabled in your Android notification shade, then tap Turn on location.';
-      } else if (error.code === 3) {
-        setLocationStatus('unavailable');
-        msg = 'Location check timed out. Please check that Location toggle is ON and try again.';
-      } else {
-        setLocationStatus('unavailable');
-        msg = error.message || 'Unable to access device location.';
-      }
-
-      setLocationError(msg);
+    // 2. Otherwise test and verify location
+    const pos = await checkDeviceLocation(true);
+    if (pos) {
+      onLocationSuccess(pos);
+    } else {
       setIsLocationDialogOpen(true);
     }
   };
@@ -386,33 +296,9 @@ export default function App() {
    */
   const handleTurnOnLocation = async () => {
     if (isRequestingLocation) return;
-
-    setIsRequestingLocation(true);
-    setLocationStatus('requesting');
-    setLocationError(null);
-
-    try {
-      const position = await requestCurrentLocation();
-      onLocationSuccess(position);
-    } catch (error) {
-      console.warn('Turn on location failed:', error);
-      setIsRequestingLocation(false);
-      let msg = '';
-      if (error.code === 1) {
-        setLocationStatus('denied');
-        msg = 'Browser permission denied. Tap the 🔒 lock icon in the address bar → Site settings → Location → Allow.';
-      } else if (error.code === 2) {
-        setLocationStatus('unavailable');
-        msg = 'Device location is turned off. Please swipe down from top of screen to turn ON Location, then tap Turn on location.';
-      } else if (error.code === 3) {
-        setLocationStatus('unavailable');
-        msg = 'Location check timed out. Please ensure Location is turned on and try again.';
-      } else {
-        setLocationStatus('unavailable');
-        msg = error.message || 'Unable to access device location.';
-      }
-      setLocationError(msg);
-      // Keep dialog open so user can see instructions or tap No, thanks
+    const pos = await checkDeviceLocation(true);
+    if (pos) {
+      onLocationSuccess(pos);
     }
   };
 
@@ -523,6 +409,72 @@ export default function App() {
         <section className="layout-col primary-col">
           {!isTripActive ? (
             <>
+              {/* Device Location Check & Status Card */}
+              <div
+                className={`device-location-status-card ${locationStatus === 'granted' && currentLocation
+                    ? 'is-on'
+                    : locationStatus === 'requesting'
+                      ? 'is-checking'
+                      : 'is-off'
+                  }`}
+              >
+                <div className="loc-status-left">
+                  <div className="loc-status-icon-bubble">
+                    {locationStatus === 'granted' && currentLocation ? (
+                      <span className="loc-dot-pulse green" />
+                    ) : locationStatus === 'requesting' ? (
+                      <span className="loc-spinner" />
+                    ) : (
+                      <span className="loc-dot-pulse orange" />
+                    )}
+                  </div>
+                  <div className="loc-status-info">
+                    <div className="loc-status-title">
+                      {locationStatus === 'granted' && currentLocation ? (
+                        <>
+                          <span className="loc-status-badge badge-on">🟢 LOCATION IS ON</span>
+                          {lastUpdated && <span className="loc-status-time">Checked {lastUpdated}</span>}
+                        </>
+                      ) : locationStatus === 'requesting' ? (
+                        <span className="loc-status-badge badge-checking">🔄 CHECKING LOCATION...</span>
+                      ) : (
+                        <span className="loc-status-badge badge-off">⚠️ LOCATION NOT DETECTED</span>
+                      )}
+                    </div>
+                    <div className="loc-status-subtext">
+                      {locationStatus === 'granted' && currentLocation ? (
+                        <span className="loc-coords-text">
+                          GPS: {currentLocation.lat.toFixed(4)}°, {currentLocation.lng.toFixed(4)}° • Ready to track
+                        </span>
+                      ) : locationStatus === 'requesting' ? (
+                        <span>Checking if your phone's location toggle is on...</span>
+                      ) : locationStatus === 'denied' ? (
+                        <span>Browser permission blocked. Tap 🔒 in address bar to allow.</span>
+                      ) : (
+                        <span>Turn on Location in phone quick settings and tap Check Location.</span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  className="loc-check-btn"
+                  onClick={() => checkDeviceLocation(true)}
+                  disabled={locationStatus === 'requesting'}
+                >
+                  {locationStatus === 'requesting' ? (
+                    <>
+                      <span className="loc-btn-spinner" />
+                      <span>Checking...</span>
+                    </>
+                  ) : locationStatus === 'granted' && currentLocation ? (
+                    '🔄 Re-check'
+                  ) : (
+                    '⚡ Check Location'
+                  )}
+                </button>
+              </div>
+
               <DestinationSearch
                 destination={destination}
                 setDestination={setDestination}

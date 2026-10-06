@@ -6,10 +6,15 @@ export default function TripStatus({
   alertDistance,
   currentLocation,
   remainingDistance,
+  routeDetails,
   lastUpdated,
   onStopTrip,
   isSimulating,
 }) {
+  const isRoadRoute = routeDetails?.routeType === 'road';
+  const durationText = routeDetails?.durationText;
+  const straightLineKm = routeDetails?.straightLineKm;
+
   return (
     <div className="glass-card trip-active-panel">
       {/* Status Bar */}
@@ -22,15 +27,48 @@ export default function TripStatus({
           <span className="pulse-dot" />
           {isSimulating ? '🎮 Simulated GPS' : '📍 GPS Tracking'}
         </span>
+        <span
+          className="status-badge"
+          style={{
+            background: isRoadRoute ? 'rgba(56, 189, 248, 0.15)' : 'rgba(245, 158, 11, 0.15)',
+            border: isRoadRoute ? '1px solid rgba(56, 189, 248, 0.4)' : '1px solid rgba(245, 158, 11, 0.4)',
+            color: isRoadRoute ? '#38bdf8' : '#f59e0b',
+          }}
+          title={isRoadRoute ? 'Calculated along actual highways/roads via Google Maps routing' : 'Straight-line fallback'}
+        >
+          {isRoadRoute ? '🛣️ Road Driving Route' : '📏 Straight Line'}
+        </span>
       </div>
 
       {/* Hero Distance Remaining */}
       <div className="distance-hero">
-        <div className="distance-label">Distance Remaining</div>
+        <div className="distance-label">
+          {isRoadRoute ? 'Road Distance Remaining (Driving Route)' : 'Distance Remaining'}
+        </div>
         <div className="distance-value-large">
           {remainingDistance !== null ? remainingDistance.toFixed(2) : '--'}
           <span>km</span>
         </div>
+
+        {durationText && (
+          <div
+            style={{
+              marginTop: '0.45rem',
+              fontSize: '0.88rem',
+              color: '#38bdf8',
+              fontWeight: 600,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '0.35rem',
+            }}
+          >
+            <span>⏱️</span>
+            <span>Est. Travel Time:</span>
+            <span style={{ color: '#fff', fontWeight: 700 }}>~{durationText}</span>
+          </div>
+        )}
+
         <div className="target-threshold-text">
           Alert sounds at <strong>≤ {alertDistance >= 1000 ? `${(alertDistance / 1000).toFixed(1).replace(/\.0$/, '')} km` : `${alertDistance} m`}</strong>
         </div>
@@ -61,7 +99,27 @@ export default function TripStatus({
         </div>
       </div>
 
-      {/* Google Maps Live Route Button */}
+      {/* Comparison with straight-line if different */}
+      {isRoadRoute && straightLineKm && Math.abs(straightLineKm - (remainingDistance || 0)) > 1 && (
+        <div
+          style={{
+            background: 'rgba(15, 23, 42, 0.6)',
+            border: '1px solid rgba(255, 255, 255, 0.08)',
+            borderRadius: 'var(--radius-md)',
+            padding: '0.5rem 0.75rem',
+            fontSize: '0.76rem',
+            color: 'var(--text-dim)',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+          }}
+        >
+          <span>🛣️ Actual road distance: <strong style={{ color: '#38bdf8' }}>{remainingDistance?.toFixed(1)} km</strong></span>
+          <span>📏 Straight-line: {straightLineKm.toFixed(1)} km</span>
+        </div>
+      )}
+
+      {/* Google Maps Live Driving Route Button */}
       <button
         type="button"
         className="preset-chip"
@@ -86,14 +144,14 @@ export default function TripStatus({
                 ? encodeURIComponent(destination.name)
                 : `${destination.lat},${destination.lng}`;
             window.open(
-              `https://www.google.com/maps/dir/?api=1&origin=${currentLocation.lat},${currentLocation.lng}&destination=${destParam}&travelmode=transit`,
+              `https://www.google.com/maps/dir/?api=1&origin=${currentLocation.lat},${currentLocation.lng}&destination=${destParam}&travelmode=driving`,
               '_blank'
             );
           } else if (destination) {
             window.open(getGoogleMapsUrl(destination), '_blank');
           }
         }}
-        title="View live transit route on Google Maps"
+        title="View live driving route on Google Maps"
       >
         <span>🗺️</span>
         <span>View Route on Google Maps ↗</span>
