@@ -1,4 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { Capacitor } from '@capacitor/core';
+import { Geolocation } from '@capacitor/geolocation';
+
 import Header from './components/Header';
 import DestinationSearch from './components/DestinationSearch';
 import AlertDistance from './components/AlertDistance';
@@ -10,18 +13,15 @@ import { calculateDistance, checkBackendHealth } from './utils/api';
 import { alarmAudio } from './utils/audioAlarm';
 
 export default function App() {
-  // Destination: defaults to Chennai Central as in plan.md
   const [destination, setDestination] = useState({
     name: 'Chennai Central Station',
     lat: 13.0827,
     lng: 80.2707,
   });
 
-  // Alert distance threshold stored in METERS (slider uses meters).
-  // Default: 3000 m = 3 km. Convert to km before sending to backend.
+  // Slider value is in meters; the backend expects kilometers.
   const [alertDistance, setAlertDistance] = useState(3000);
 
-  // Trip state
   const [isTripActive, setIsTripActive] = useState(false);
   const [currentLocation, setCurrentLocation] = useState(null);
   const [remainingDistance, setRemainingDistance] = useState(null);
@@ -35,116 +35,151 @@ export default function App() {
   const [backendError, setBackendError] = useState(null);
   const [isBackendOnline, setIsBackendOnline] = useState(false);
 
-  // Location Permission State Management
   // 'idle' | 'requesting' | 'granted' | 'denied' | 'unavailable' | 'cancelled'
   const [locationStatus, setLocationStatus] = useState('idle');
   const [isLocationDialogOpen, setIsLocationDialogOpen] = useState(false);
   const [isRequestingLocation, setIsRequestingLocation] = useState(false);
   const [locationError, setLocationError] = useState(null);
 
-  // Alarm modal & audio state
   const [isAlarmActive, setIsAlarmActive] = useState(false);
-
-  // Simulation mode for desktop testing
   const [isSimulating, setIsSimulating] = useState(false);
-  const simOffsetRef = useRef(0.1); // ~11 km away initially
+  const simOffsetRef = useRef(0.1);
 
-  // Watch position reference for continuous live GPS tracking
+  // Browser watch IDs are numbers; Capacitor watch IDs are strings.
   const watchIdRef = useRef(null);
-  // Timestamp of the latest valid location acquisition
   const lastLocationTimestampRef = useRef(0);
 
-  // Helper to completely stop active geolocation watcher
+  const isNative = Capacitor.isNativePlatform();
+
+  // Stop whichever location watcher was started (native or browser).
   const stopAllTracking = () => {
-    if (watchIdRef.current !== null) {
-      navigator.geolocation.clearWatch(watchIdRef.current);
-      watchIdRef.current = null;
+    const watchId = watchIdRef.current;
+    if (watchId === null) return;
+
+    watchIdRef.current = null;
+
+    if (isNative) {
+      Geolocation.clearWatch({ id: watchId }).catch((error) => {
+        console.warn('Could not clear native location watch:', error);
+      });
+    } else if (navigator.geolocation) {
+      navigator.geolocation.clearWatch(watchId);
     }
   };
 
   /**
-   * checkDeviceLocation:
-   * Directly, reliably, and quickly checks whether the device's location is ON or OFF.
-   *
-   * Crucial rule: MUST use enableHighAccuracy: false!
-   * On Android, enableHighAccuracy: false queries standard device location (GPS/Network)
-   * WITHOUT triggering the invasive Google Location Accuracy modal that hangs on "Checking...".
+   * Get one location reading.
+   * On Android/iOS, use Capacitor's native permission API.
+   * In a normal browser, use navigator.geolocation.
    */
-  const checkDeviceLocation = (isUserAction = false) => {
-    return new Promise((resolve) => {
-      if (typeof window === 'undefined' || !('geolocation' in navigator)) {
-        setLocationStatus('unavailable');
-        setLocationError('Geolocation is not supported by your browser.');
-        resolve(null);
-        return;
-      }
+  const checkDeviceLocation = async (isUserAction = false) => {
+    setIsRequestingLocation(true);
+    setLocationStatus('requesting');
+    setLocationError(null);
+    setGpsError(null);
 
-      setIsRequestingLocation(true);
-      setLocationStatus('requesting');
-      setLocationError(null);
-      setGpsError(null);
+    try {
+      if (isNative) {
+        let permission = await Geolocation.checkPermissions();
 
-      let isDone = false;
+        // Ask for permission only following a user action, not on page load.
+        if (
+          permission.location !== 'granted' &&
+          isUserAction
+        ) {
+          permission = await Geolocation.requestPermissions();
+        }
 
-      const finishSuccess = (position) => {
-        if (isDone) return;
-        isDone = true;
+        if (permission.location !== 'granted') {
+          setLocationStatus('denied');
+          setLocationError(
+            'Location permission is not allowed. Tap Check Location or START TRIP and allow location access.'
+          );
+          return null;
+        }
+
+        const position = await Geolocation.getCurrentPosition({
+          enableHighAccuracy: true,
+          timeout: 15000,
+          maximumAge: 30000,
+        });
+
         const { latitude, longitude } = position.coords;
         lastLocationTimestampRef.current = Date.now();
-        const timeStr = new Date().toLocaleTimeString();
         setCurrentLocation({ lat: latitude, lng: longitude });
-        setLastUpdated(timeStr);
+        setLastUpdated(new Date().toLocaleTimeString());
         setLocationStatus('granted');
-        setIsRequestingLocation(false);
         setIsLocationDialogOpen(false);
         setLocationError(null);
         setGpsError(null);
-        resolve(position);
-      };
+        return position;
+      }
 
-      const finishError = (error) => {
-        if (isDone) return;
-        isDone = true;
-        console.warn('checkDeviceLocation error:', error);
-        setIsRequestingLocation(false);
-        let msg = '';
-        if (error.code === 1) {
-          // PERMISSION_DENIED
-          setLocationStatus('denied');
-          msg = 'Browser location permission denied. Tap 🔒 in address bar → Site Settings → Allow Location.';
-        } else if (error.code === 2) {
-          // POSITION_UNAVAILABLE - Device location toggle is OFF
-          setLocationStatus('unavailable');
-          msg = 'Device location is turned OFF. Please swipe down from top of screen, turn ON Location, and tap Check Location.';
-        } else if (error.code === 3) {
-          // TIMEOUT
-          setLocationStatus('unavailable');
-          msg = 'Location check timed out. Please check that phone Location toggle is ON and tap Check Location.';
-        } else {
-          setLocationStatus('unavailable');
-          msg = error.message || 'Unable to detect device location.';
-        }
-        setLocationError(msg);
-        resolve(null);
-      };
+      // Web-browser fallback.
+      if (
+        typeof window === 'undefined' ||
+        !('geolocation' in navigator)
+      ) {
+        setLocationStatus('unavailable');
+        setLocationError('Geolocation is not supported by this browser.');
+        return null;
+      }
 
-      navigator.geolocation.getCurrentPosition(
-        finishSuccess,
-        finishError,
-        {
-          enableHighAccuracy: false, // Standard device location only - NO system prompt!
+      const position = await new Promise((resolve, reject) => {
+        navigator.geolocation.getCurrentPosition(resolve, reject, {
+          enableHighAccuracy: false,
           timeout: 8000,
           maximumAge: 30000,
-        }
-      );
-    });
+        });
+      });
+
+      const { latitude, longitude } = position.coords;
+      lastLocationTimestampRef.current = Date.now();
+      setCurrentLocation({ lat: latitude, lng: longitude });
+      setLastUpdated(new Date().toLocaleTimeString());
+      setLocationStatus('granted');
+      setIsLocationDialogOpen(false);
+      setLocationError(null);
+      setGpsError(null);
+      return position;
+    } catch (error) {
+      console.warn('checkDeviceLocation error:', error);
+
+      // Native and browser errors have different shapes. Use the browser
+      // numeric codes when available and otherwise show a useful message.
+      if (!isNative && error?.code === 1) {
+        setLocationStatus('denied');
+        setLocationError(
+          'Browser location permission denied. Allow Location in your browser site settings.'
+        );
+      } else if (!isNative && error?.code === 2) {
+        setLocationStatus('unavailable');
+        setLocationError(
+          'Unable to determine location. Turn on Location in your phone settings and try again.'
+        );
+      } else if (!isNative && error?.code === 3) {
+        setLocationStatus('unavailable');
+        setLocationError(
+          'Location request timed out. Check that Location is on and try again.'
+        );
+      } else {
+        setLocationStatus('unavailable');
+        setLocationError(
+          error?.message ||
+            'Unable to get your location. Check app permissions and device Location settings.'
+        );
+      }
+
+      return null;
+    } finally {
+      setIsRequestingLocation(false);
+    }
   };
 
-  // Automatically check whether device location is ON on page load & tab focus
+  // Check location on launch without triggering a permission prompt.
   useEffect(() => {
     checkDeviceLocation(false);
 
-    // Auto-check whenever user returns from phone settings to the browser tab!
     const handleVisibility = () => {
       if (document.visibilityState === 'visible' && !isTripActive) {
         checkDeviceLocation(false);
@@ -157,23 +192,34 @@ export default function App() {
     };
   }, [isTripActive]);
 
-  // 1. Periodically check backend health
+  // Periodically check backend health.
   useEffect(() => {
+    let mounted = true;
+
     const pingBackend = async () => {
-      const online = await checkBackendHealth();
-      setIsBackendOnline(online);
+      try {
+        const online = await checkBackendHealth();
+        if (mounted) setIsBackendOnline(online);
+      } catch (error) {
+        if (mounted) setIsBackendOnline(false);
+      }
     };
+
     pingBackend();
     const interval = setInterval(pingBackend, 10000);
-    return () => clearInterval(interval);
+
+    return () => {
+      mounted = false;
+      clearInterval(interval);
+    };
   }, []);
 
-  // 2. Synchronize GPS tracking with Backend
+  // Send the current and destination coordinates to the existing backend.
   const syncLocationWithBackend = async (lat, lng, dest, thresholdMeters) => {
     try {
       setBackendError(null);
-      // Convert meters → km for the backend (backend expects km)
       const alertDistanceKm = thresholdMeters / 1000;
+
       const result = await calculateDistance({
         currentLat: lat,
         currentLng: lng,
@@ -185,27 +231,32 @@ export default function App() {
       setRemainingDistance(result.distance_km);
       setRouteDetails({
         routeType: result.route_type || 'road',
-        durationText: result.duration_text || (result.duration_min ? `${Math.round(result.duration_min)} min` : ''),
+        durationText:
+          result.duration_text ||
+          (result.duration_min
+            ? `${Math.round(result.duration_min)} min`
+            : ''),
         straightLineKm: result.straight_line_km || null,
       });
       setLastUpdated(new Date().toLocaleTimeString());
 
-      // If backend reports alert threshold reached, sound the alarm!
       if (result.alert && !isAlarmActive) {
         setIsAlarmActive(true);
         alarmAudio.startAlarm();
       }
-    } catch (err) {
-      console.error('Backend sync failed:', err);
-      setBackendError(`Backend request failed: ${err.message}`);
+    } catch (error) {
+      console.error('Backend sync failed:', error);
+      setBackendError(`Backend request failed: ${error.message}`);
     }
   };
 
-  // 3. Continuous background watcher during an active trip
-  const startLiveWatch = () => {
+  // Watch location continuously while a trip is active.
+  const startLiveWatch = async () => {
     stopAllTracking();
 
     const onWatchSuccess = (position) => {
+      if (!position) return;
+
       const { latitude, longitude } = position.coords;
       lastLocationTimestampRef.current = Date.now();
       setCurrentLocation({ lat: latitude, lng: longitude });
@@ -215,27 +266,53 @@ export default function App() {
 
     const onWatchError = (error) => {
       console.warn('Live tracking notice:', error);
-      if (error.code === error.TIMEOUT) return;
-      if (error.code === error.POSITION_UNAVAILABLE) {
-        setGpsError('📡 Fine-tuning satellite GPS signal...');
-      }
+      setGpsError(
+        error?.message ||
+          'Unable to update location. Check GPS and app permissions.'
+      );
     };
 
-    // enableHighAccuracy: false prevents prompting the user with the GLA system dialog during active transit!
-    watchIdRef.current = navigator.geolocation.watchPosition(
-      onWatchSuccess,
-      onWatchError,
-      {
-        enableHighAccuracy: false,
-        timeout: 15000,
-        maximumAge: 4000,
+    try {
+      if (isNative) {
+        watchIdRef.current = await Geolocation.watchPosition(
+          {
+            enableHighAccuracy: true,
+            timeout: 15000,
+            maximumAge: 4000,
+          },
+          (position, error) => {
+            if (error) {
+              onWatchError(error);
+            } else if (position) {
+              onWatchSuccess(position);
+            }
+          }
+        );
+      } else {
+        if (!navigator.geolocation) {
+          setGpsError('Geolocation is not supported by this browser.');
+          return;
+        }
+
+        watchIdRef.current = navigator.geolocation.watchPosition(
+          onWatchSuccess,
+          onWatchError,
+          {
+            enableHighAccuracy: false,
+            timeout: 15000,
+            maximumAge: 4000,
+          }
+        );
       }
-    );
+    } catch (error) {
+      console.error('Could not start location tracking:', error);
+      setGpsError(error?.message || 'Could not start GPS tracking.');
+    }
   };
 
-  // Helper when location is successfully obtained
   const onLocationSuccess = (position) => {
     const { latitude, longitude } = position.coords;
+
     lastLocationTimestampRef.current = Date.now();
     setLocationStatus('granted');
     setIsRequestingLocation(false);
@@ -245,19 +322,10 @@ export default function App() {
     setCurrentLocation({ lat: latitude, lng: longitude });
     setIsTripActive(true);
 
-    // Sync with backend API
     syncLocationWithBackend(latitude, longitude, destination, alertDistance);
-
-    // Start continuous live tracking for transit updates
     startLiveWatch();
   };
 
-  /**
-   * handleStartTrip:
-   * Triggered when the user clicks START TRIP.
-   * If location is already verified ON, starts immediately!
-   * Otherwise verifies location state and starts trip if ON.
-   */
   const handleStartTrip = async () => {
     if (!destination) {
       alert('Please select or search for a destination first.');
@@ -266,7 +334,6 @@ export default function App() {
 
     if (isRequestingLocation) return;
 
-    // 1. If location is already verified ON and recent (< 2 min), start immediately!
     if (
       currentLocation &&
       lastLocationTimestampRef.current &&
@@ -281,32 +348,23 @@ export default function App() {
       return;
     }
 
-    // 2. Otherwise test and verify location
-    const pos = await checkDeviceLocation(true);
-    if (pos) {
-      onLocationSuccess(pos);
+    const position = await checkDeviceLocation(true);
+    if (position) {
+      onLocationSuccess(position);
     } else {
       setIsLocationDialogOpen(true);
     }
   };
 
-  /**
-   * handleTurnOnLocation:
-   * Triggered when the user clicks "Turn on location" inside the dialog.
-   */
   const handleTurnOnLocation = async () => {
     if (isRequestingLocation) return;
-    const pos = await checkDeviceLocation(true);
-    if (pos) {
-      onLocationSuccess(pos);
+
+    const position = await checkDeviceLocation(true);
+    if (position) {
+      onLocationSuccess(position);
     }
   };
 
-  /**
-   * handleNoThanks:
-   * Triggered when the user clicks "No, thanks" inside the dialog.
-   * Cancels the trip, closes the dialog, and stops all background requests.
-   */
   const handleNoThanks = () => {
     setIsLocationDialogOpen(false);
     setIsRequestingLocation(false);
@@ -314,23 +372,26 @@ export default function App() {
     setIsTripActive(false);
     setGpsError(null);
     stopAllTracking();
-    // Do NOT request location again. The user remains safely on the page.
-    // When the user clicks Start Trip again, the dialog will appear again cleanly.
   };
 
-  // User action: Enter destination manually from settings guide
   const handleEnterDestinationManually = () => {
     handleNoThanks();
-    const searchEl = document.querySelector('.search-input') || document.querySelector('.destination-card');
+
+    const searchEl =
+      document.querySelector('.search-input') ||
+      document.querySelector('.destination-card');
+
     if (searchEl) {
       searchEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      if (typeof searchEl.focus === 'function') {
-        searchEl.focus();
-      }
+      if (typeof searchEl.focus === 'function') searchEl.focus();
     }
   };
 
-  // Stop Trip
+  const handleStopAlarm = () => {
+    setIsAlarmActive(false);
+    alarmAudio.stopAlarm();
+  };
+
   const handleStopTrip = () => {
     stopAllTracking();
     setIsTripActive(false);
@@ -340,18 +401,10 @@ export default function App() {
     handleStopAlarm();
   };
 
-  // 9. Stop Alarm
-  const handleStopAlarm = () => {
-    setIsAlarmActive(false);
-    alarmAudio.stopAlarm();
-  };
-
-  // 6. Simulator: Move 2 km closer each step
   const handleSimulateStep = () => {
     if (!destination) return;
     setIsSimulating(true);
 
-    // Decrease coordinate offset (~0.018 degrees is approx 2 km)
     simOffsetRef.current = Math.max(0.005, simOffsetRef.current - 0.02);
 
     const simLat = destination.lat + simOffsetRef.current;
@@ -361,22 +414,20 @@ export default function App() {
     syncLocationWithBackend(simLat, simLng, destination, alertDistance);
   };
 
-  // 7. Instant Alarm Trigger Test
   const handleTriggerAlarmDirectly = () => {
     setIsAlarmActive(true);
     alarmAudio.startAlarm();
   };
 
-  // 8. Reset Simulation
   const handleResetSimulation = () => {
-    simOffsetRef.current = 0.1; // ~11 km away
+    simOffsetRef.current = 0.1;
     const simLat = destination.lat + simOffsetRef.current;
     const simLng = destination.lng + simOffsetRef.current;
+
     setCurrentLocation({ lat: simLat, lng: simLng });
     syncLocationWithBackend(simLat, simLng, destination, alertDistance);
   };
 
-  // Cleanup on unmount
   useEffect(() => {
     return () => {
       stopAllTracking();
@@ -386,10 +437,8 @@ export default function App() {
 
   return (
     <div className="app-container">
-      {/* App Header with Connection Status */}
       <Header isBackendOnline={isBackendOnline} />
 
-      {/* GPS & Backend Error Alerts */}
       {gpsError && (
         <div className="alert-box alert-warning">
           <span>⚠️</span>
@@ -404,19 +453,18 @@ export default function App() {
         </div>
       )}
 
-      {/* Responsive Layout Grid (Single column on mobile, 2-column dashboard on desktop/tablet) */}
       <main className="responsive-layout">
         <section className="layout-col primary-col">
           {!isTripActive ? (
             <>
-              {/* Device Location Check & Status Card */}
               <div
-                className={`device-location-status-card ${locationStatus === 'granted' && currentLocation
+                className={`device-location-status-card ${
+                  locationStatus === 'granted' && currentLocation
                     ? 'is-on'
                     : locationStatus === 'requesting'
                       ? 'is-checking'
                       : 'is-off'
-                  }`}
+                }`}
               >
                 <div className="loc-status-left">
                   <div className="loc-status-icon-bubble">
@@ -428,34 +476,54 @@ export default function App() {
                       <span className="loc-dot-pulse orange" />
                     )}
                   </div>
+
                   <div className="loc-status-info">
                     <div className="loc-status-title">
                       {locationStatus === 'granted' && currentLocation ? (
                         <>
-                          <span className="loc-status-badge badge-on">🟢 LOCATION IS ON</span>
-                          {lastUpdated && <span className="loc-status-time">Checked {lastUpdated}</span>}
+                          <span className="loc-status-badge badge-on">
+                            🟢 LOCATION IS ON
+                          </span>
+                          {lastUpdated && (
+                            <span className="loc-status-time">
+                              Checked {lastUpdated}
+                            </span>
+                          )}
                         </>
                       ) : locationStatus === 'requesting' ? (
-                        <span className="loc-status-badge badge-checking">🔄 CHECKING LOCATION...</span>
+                        <span className="loc-status-badge badge-checking">
+                          🔄 CHECKING LOCATION...
+                        </span>
                       ) : (
-                        <span className="loc-status-badge badge-off">⚠️ LOCATION NOT DETECTED</span>
+                        <span className="loc-status-badge badge-off">
+                          ⚠️ LOCATION NOT DETECTED
+                        </span>
                       )}
                     </div>
+
                     <div className="loc-status-subtext">
                       {locationStatus === 'granted' && currentLocation ? (
                         <span className="loc-coords-text">
-                          GPS: {currentLocation.lat.toFixed(4)}°, {currentLocation.lng.toFixed(4)}° • Ready to track
+                          GPS: {currentLocation.lat.toFixed(4)}°,{' '}
+                          {currentLocation.lng.toFixed(4)}° • Ready to track
                         </span>
                       ) : locationStatus === 'requesting' ? (
-                        <span>Checking if your phone's location toggle is on...</span>
+                        <span>Checking your phone's location...</span>
                       ) : locationStatus === 'denied' ? (
-                        <span>Browser permission blocked. Tap 🔒 in address bar to allow.</span>
+                        <span>
+                          Location permission is blocked. Tap Check Location
+                          and allow access.
+                        </span>
                       ) : (
-                        <span>Turn on Location in phone quick settings and tap Check Location.</span>
+                        <span>
+                          Turn on Location in phone settings and tap Check
+                          Location.
+                        </span>
                       )}
                     </div>
                   </div>
                 </div>
+
                 <button
                   type="button"
                   className="loc-check-btn"
@@ -497,7 +565,10 @@ export default function App() {
               >
                 {locationStatus === 'requesting' ? (
                   <>
-                    <span className="pulse-dot" style={{ backgroundColor: '#fff' }} />
+                    <span
+                      className="pulse-dot"
+                      style={{ backgroundColor: '#fff' }}
+                    />
                     <span>ACQUIRING LOCATION...</span>
                   </>
                 ) : (
@@ -522,7 +593,6 @@ export default function App() {
         </section>
 
         <section className="layout-col secondary-col">
-          {/* Simulator Controls for Desktop / Testing */}
           <SimulatorControl
             isTripActive={isTripActive}
             onSimulateStep={handleSimulateStep}
@@ -531,28 +601,36 @@ export default function App() {
             isSimulating={isSimulating}
           />
 
-          {/* Passenger Travel Tips & Device Battery Advice */}
           <div className="glass-card travel-tips-card">
-            <div className="section-label" style={{ marginBottom: '0.4rem', color: 'var(--accent-blue)' }}>
+            <div
+              className="section-label"
+              style={{
+                marginBottom: '0.4rem',
+                color: 'var(--accent-blue)',
+              }}
+            >
               <span>🛡️</span>
-              <span>Bus Travel Guide & Tips</span>
+              <span>Bus Travel Guide &amp; Tips</span>
             </div>
             <ul className="travel-tips-list">
               <li>
-                <strong>📱 Keep Screen / Audio Active:</strong> Keep this browser tab open and ensure your media volume is unmuted so you don't sleep through the alarm.
+                <strong>📱 Keep Screen / Audio Active:</strong> Keep the app
+                open and ensure your media volume is unmuted so you don't miss
+                the alarm.
               </li>
               <li>
-                <strong>🔋 Battery Saving:</strong> The GPS tracking runs efficiently in your browser without heating up your battery.
+                <strong>🔋 Battery Saving:</strong> Location tracking can use
+                battery, especially with high-accuracy GPS.
               </li>
               <li>
-                <strong>📍 GPS Accuracy:</strong> Works on sleeper buses, night express coaches, and trains with device satellite GPS.
+                <strong>📍 GPS Accuracy:</strong> Location accuracy depends on
+                device settings, signal, and surroundings.
               </li>
             </ul>
           </div>
         </section>
       </main>
 
-      {/* Fullscreen Wake-Up Alarm Modal */}
       <AlarmModal
         isOpen={isAlarmActive}
         distance={remainingDistance}
@@ -561,7 +639,6 @@ export default function App() {
         onStopAlarm={handleStopAlarm}
       />
 
-      {/* Android Location Accuracy & Permission Dialog */}
       <LocationPermissionDialog
         isOpen={isLocationDialogOpen}
         isRequesting={isRequestingLocation}
@@ -573,7 +650,7 @@ export default function App() {
 
       <footer className="app-footer">
         <p>Calculates straight-line distance via Haversine formula.</p>
-        <p>Keep browser open & device volume on during your journey.</p>
+        <p>Keep the app open and device volume on during your journey.</p>
       </footer>
     </div>
   );

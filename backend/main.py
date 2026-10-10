@@ -36,6 +36,9 @@ app.add_middleware(
         "http://localhost:5173",             # Vite local dev
         "http://localhost:3000",             # Alt local dev port
         "http://127.0.0.1:8000",
+        "https://localhost",
+        "capacitor://localhost",
+
     ],
     allow_origin_regex=r"https://.*\.vercel\.app",
     allow_credentials=True,
