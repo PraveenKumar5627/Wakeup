@@ -5,7 +5,7 @@ export default function Header({ isBackendOnline }) {
     <header className="app-header">
       <div className="logo-row">
         <span className="bus-icon">🚌</span>
-        <span className="brand-title">Smart Transit Wakeup</span>
+        <span className="brand-title">Smart Transit Wakeup..</span>
       </div>
       <h1 className="main-heading">Travel Destination Alarm</h1>
       <p className="sub-heading">

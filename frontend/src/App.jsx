@@ -1,15 +1,21 @@
 /**
  * App.jsx — Smart Transit Wakeup
  *
- * Main application component.
+ * Full-stack mobile-friendly Travel Destination Alarm application.
  *
- * Location lifecycle is fully delegated to useLocationPermission hook.
- * On first open the hook silently checks permission status.  When the user
- * taps "START TRIP" or "Check Location", requestPermission() is called —
- * which is a genuine user-gesture — so Android shows the system dialog.
- *
- * The LocationPermissionDialog is shown automatically when the app detects
- * that permission has not yet been granted so the user is informed early.
+ * Workflow:
+ *   1. User opens app and selects/searches destination.
+ *   2. User clicks "Start Trip".
+ *   3. App requests location permission using the correct API:
+ *      - Web (Vercel): `navigator.geolocation.getCurrentPosition()`
+ *      - Native: `@capacitor/geolocation`
+ *   4. Once granted, retrieves real latitude & longitude (never fake or hardcoded).
+ *   5. Detects if device location is off and shows instructions to enable in Quick Settings.
+ *   6. Displays real-time location on the map and tracks movement via `watchPosition()`.
+ *   7. Calculates remaining road distance via routing API (OSRM driving route).
+ *   8. Sounds wake-up siren alarm and displays alarm screen when destination threshold is reached.
+ *   9. Full handling of loading, success, denied, disabled, timeout, and unavailable states.
+ *  10. Cleans up watcher and releases Screen Wake Lock when trip is stopped.
  */
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
@@ -32,24 +38,23 @@ export default function App() {
     lng: 80.2707,
   });
 
-  // Slider value is in metres; the backend expects kilometres.
+  // Alert distance threshold in metres (backend receives kilometres)
   const [alertDistance, setAlertDistance] = useState(3000);
 
   // ── Trip state ───────────────────────────────────────────────────────────
-  const [isTripActive, setIsTripActive]         = useState(false);
+  const [isTripActive, setIsTripActive] = useState(false);
   const [remainingDistance, setRemainingDistance] = useState(null);
-  const [routeDetails, setRouteDetails]         = useState({
+  const [routeDetails, setRouteDetails] = useState({
     routeType: 'road',
     durationText: '',
     straightLineKm: null,
   });
-  const [gpsError, setGpsError]       = useState(null);
+  const [gpsError, setGpsError] = useState(null);
   const [backendError, setBackendError] = useState(null);
   const [isBackendOnline, setIsBackendOnline] = useState(false);
 
   // ── Alarm ────────────────────────────────────────────────────────────────
   const [isAlarmActive, setIsAlarmActive] = useState(false);
-  // Prevent the same journey from firing the alarm twice
   const alarmFiredRef = useRef(false);
 
   // ── Simulator ────────────────────────────────────────────────────────────
@@ -57,9 +62,10 @@ export default function App() {
   const simOffsetRef = useRef(0.1);
 
   // ── Permission dialog ────────────────────────────────────────────────────
-  // Show the dialog automatically once when the app detects permission is missing.
-  const [isPermDialogOpen, setIsPermDialogOpen]   = useState(false);
-  const hasShownDialogRef = useRef(false); // only auto-open once per session
+  const [isPermDialogOpen, setIsPermDialogOpen] = useState(false);
+
+  // ── Screen Wake Lock (prevents mobile phone screen from sleeping) ────────
+  const wakeLockRef = useRef(null);
 
   // ── Location hook ────────────────────────────────────────────────────────
   const {
@@ -72,6 +78,8 @@ export default function App() {
     needsPermission,
     isPermanentlyDenied,
     isServicesOff,
+    isTimeout,
+    isUnavailable,
     isFetchingLocation,
     isNative,
     checkPermissionStatus,
@@ -82,22 +90,37 @@ export default function App() {
     lastFixTimestampRef,
   } = useLocationPermission();
 
-  // ── Auto-open permission dialog once permission status is known ──────────
+  // ── Screen Wake Lock management during active journey ─────────────────────
   useEffect(() => {
-    // Only open automatically the first time, and only if permission isn't granted
-    if (
-      !hasShownDialogRef.current &&
-      !isTripActive &&
-      (needsPermission || isServicesOff) &&
-      locationPermStatus !== 'idle' &&
-      locationPermStatus !== 'checking'
-    ) {
-      hasShownDialogRef.current = true;
-      // Small delay so app is fully rendered before showing dialog
-      const tid = setTimeout(() => setIsPermDialogOpen(true), 800);
-      return () => clearTimeout(tid);
+    let active = true;
+
+    const acquireLock = async () => {
+      if (isTripActive && 'wakeLock' in navigator) {
+        try {
+          wakeLockRef.current = await navigator.wakeLock.request('screen');
+        } catch (err) {
+          console.warn('[App] Screen Wake Lock not acquired:', err);
+        }
+      }
+    };
+
+    if (isTripActive) {
+      acquireLock();
+    } else {
+      if (wakeLockRef.current) {
+        wakeLockRef.current.release().catch(() => {});
+        wakeLockRef.current = null;
+      }
     }
-  }, [locationPermStatus, needsPermission, isServicesOff, isTripActive]);
+
+    return () => {
+      active = false;
+      if (wakeLockRef.current) {
+        wakeLockRef.current.release().catch(() => {});
+        wakeLockRef.current = null;
+      }
+    };
+  }, [isTripActive]);
 
   // ── Backend health polling ────────────────────────────────────────────────
   useEffect(() => {
@@ -114,60 +137,69 @@ export default function App() {
 
     ping();
     const iv = setInterval(ping, 10000);
-    return () => { mounted = false; clearInterval(iv); };
+    return () => {
+      mounted = false;
+      clearInterval(iv);
+    };
   }, []);
 
-  // ── Backend sync ──────────────────────────────────────────────────────────
-  const syncWithBackend = useCallback(async (lat, lng, dest, thresholdMeters) => {
-    try {
-      setBackendError(null);
-      const alertDistanceKm = thresholdMeters / 1000;
+  // ── Backend distance sync & alert trigger ─────────────────────────────────
+  const syncWithBackend = useCallback(
+    async (lat, lng, dest, thresholdMeters) => {
+      try {
+        setBackendError(null);
+        const alertDistanceKm = thresholdMeters / 1000;
 
-      const result = await calculateDistance({
-        currentLat: lat,
-        currentLng: lng,
-        destLat: dest.lat,
-        destLng: dest.lng,
-        alertDistance: alertDistanceKm,
-      });
+        const result = await calculateDistance({
+          currentLat: lat,
+          currentLng: lng,
+          destLat: dest.lat,
+          destLng: dest.lng,
+          alertDistance: alertDistanceKm,
+        });
 
-      setRemainingDistance(result.distance_km);
-      setRouteDetails({
-        routeType: result.route_type || 'road',
-        durationText:
-          result.duration_text ||
-          (result.duration_min ? `${Math.round(result.duration_min)} min` : ''),
-        straightLineKm: result.straight_line_km || null,
-      });
+        setRemainingDistance(result.distance_km);
+        setRouteDetails({
+          routeType: result.route_type || 'road',
+          durationText:
+            result.duration_text ||
+            (result.duration_min ? `${Math.round(result.duration_min)} min` : ''),
+          straightLineKm: result.straight_line_km || null,
+        });
 
-      // Alarm trigger — guard against duplicate fires for the same journey
-      if (result.alert && !isAlarmActive && !alarmFiredRef.current) {
-        alarmFiredRef.current = true;
-        setIsAlarmActive(true);
-        alarmAudio.startAlarm();
+        // Trigger wake-up alarm when approaching selected destination threshold
+        if (result.alert && !isAlarmActive && !alarmFiredRef.current) {
+          alarmFiredRef.current = true;
+          setIsAlarmActive(true);
+          alarmAudio.startAlarm();
+        }
+      } catch (err) {
+        console.error('Backend sync failed:', err);
+        setBackendError(`Backend request failed: ${err.message}`);
       }
-    } catch (err) {
-      console.error('Backend sync failed:', err);
-      setBackendError(`Backend request failed: ${err.message}`);
-    }
-  }, [isAlarmActive]);
+    },
+    [isAlarmActive]
+  );
 
   // ── Start live GPS watch during trip ─────────────────────────────────────
-  const startLiveWatch = useCallback((dest, threshold) => {
-    startWatch(
-      // onLocationUpdate callback
-      ({ lat, lng }) => {
-        setGpsError(null);
-        syncWithBackend(lat, lng, dest, threshold);
-      },
-      // onWatchError callback
-      (msg) => {
-        setGpsError(msg);
-      }
-    );
-  }, [startWatch, syncWithBackend]);
+  const startLiveWatch = useCallback(
+    (dest, threshold) => {
+      startWatch(
+        // onLocationUpdate callback
+        ({ lat, lng }) => {
+          setGpsError(null);
+          syncWithBackend(lat, lng, dest, threshold);
+        },
+        // onWatchError callback
+        (msg) => {
+          setGpsError(msg);
+        }
+      );
+    },
+    [startWatch, syncWithBackend]
+  );
 
-  // ── Handle START TRIP ─────────────────────────────────────────────────────
+  // ── Handle START TRIP (Step 2 & 3: Requests location permission) ──────────
   const handleStartTrip = async () => {
     if (!destination) {
       alert('Please select or search for a destination first.');
@@ -175,72 +207,64 @@ export default function App() {
     }
     if (isFetchingLocation) return;
 
-    // --- Step 1: ensure permission ---
-    let permStatus = locationPermStatus;
-
-    if (needsPermission) {
-      // This is a user-gesture context (button click), so we can request the dialog
-      setIsPermDialogOpen(false);
-      permStatus = await requestPermission();
-    }
-
-    if (permStatus !== 'granted') {
-      // Still not granted — show the dialog with the error
-      setIsPermDialogOpen(true);
-      return;
-    }
-
-    // --- Step 2: get fresh location ---
+    // Retrieve real coordinates
     let loc = currentLocation;
     const age = Date.now() - lastFixTimestampRef.current;
+    const isStale = !loc || age > 60000;
 
-    if (!loc || age > 120000) {
-      loc = await getCurrentLocation({ force: true });
+    // If permission has not been granted or fix is stale, trigger permission request
+    if (locationPermStatus !== 'granted' || isStale) {
+      loc = await requestPermission();
     }
 
     if (!loc) {
+      // Permission denied, device location off, or timed out
+      // Open dialog to guide the user on how to enable it
       setIsPermDialogOpen(true);
       return;
     }
 
-    // --- Step 3: start trip ---
-    alarmFiredRef.current = false; // reset alarm guard for new journey
+    // Permission granted and valid coordinates acquired!
+    alarmFiredRef.current = false;
     setIsTripActive(true);
     setIsPermDialogOpen(false);
+    setGpsError(null);
 
-    // Immediate sync and then start continuous watch
+    // Initial road distance calculation & start continuous watch
     await syncWithBackend(loc.lat, loc.lng, destination, alertDistance);
     startLiveWatch(destination, alertDistance);
   };
 
-  // ── Dialog action: user taps "Turn on location" ───────────────────────────
+  // ── Dialog action: user taps "Turn on location" / "Retry" ─────────────────
   const handleDialogTurnOnLocation = async () => {
-    const permStatus = await requestPermission();
+    const loc = await requestPermission();
 
-    if (permStatus === 'granted') {
+    if (loc) {
       setIsPermDialogOpen(false);
-      const loc = await getCurrentLocation({ force: true });
-      if (loc && isTripActive) {
+      if (!isTripActive && destination) {
+        // Auto-start trip if destination is selected
+        alarmFiredRef.current = false;
+        setIsTripActive(true);
+        setGpsError(null);
+        await syncWithBackend(loc.lat, loc.lng, destination, alertDistance);
+        startLiveWatch(destination, alertDistance);
+      } else if (isTripActive && destination) {
         syncWithBackend(loc.lat, loc.lng, destination, alertDistance);
       }
     }
-    // If still denied, dialog stays open and shows the error from the hook
   };
 
-  // ── Dialog action: user taps "No, thanks" ────────────────────────────────
+  // ── Dialog action: user dismisses dialog ──────────────────────────────────
   const handleNoThanks = () => {
     setIsPermDialogOpen(false);
-    if (isTripActive) {
-      // Don't stop an active trip just because the dialog was dismissed
-      return;
-    }
   };
 
   // ── Dialog action: enter destination manually ─────────────────────────────
   const handleEnterManually = () => {
     setIsPermDialogOpen(false);
-    const el = document.querySelector('.search-input') ||
-               document.querySelector('.destination-card');
+    const el =
+      document.querySelector('.search-input') ||
+      document.querySelector('.destination-card');
     if (el) {
       el.scrollIntoView({ behavior: 'smooth', block: 'center' });
       if (typeof el.focus === 'function') el.focus();
@@ -250,9 +274,11 @@ export default function App() {
   // ── Manual "Check Location" / "Retry Location" button ────────────────────
   const handleCheckLocation = async () => {
     if (isFetchingLocation) return;
-    // This is a user action, so we can request the dialog if needed
-    if (needsPermission || locationPermStatus === 'denied') {
-      await requestPermission();
+    if (needsPermission || isPermanentlyDenied || isServicesOff || isTimeout) {
+      const loc = await requestPermission();
+      if (!loc) {
+        setIsPermDialogOpen(true);
+      }
     } else {
       await getCurrentLocation({ force: true });
     }
@@ -262,10 +288,9 @@ export default function App() {
   const handleStopAlarm = () => {
     setIsAlarmActive(false);
     alarmAudio.stopAlarm();
-    // Don't reset alarmFiredRef here — the journey alarm should only fire once
   };
 
-  // ── Stop trip ─────────────────────────────────────────────────────────────
+  // ── Stop trip (Step 10: Tracking cleanup) ─────────────────────────────────
   const handleStopTrip = () => {
     stopWatch();
     setIsTripActive(false);
@@ -275,7 +300,7 @@ export default function App() {
     handleStopAlarm();
   };
 
-  // ── Simulator controls ────────────────────────────────────────────────────
+  // ── Simulator controls (for testing without physical travel) ──────────────
   const handleSimulateStep = () => {
     if (!destination) return;
     setIsSimulating(true);
@@ -309,52 +334,122 @@ export default function App() {
   }, [stopWatch]);
 
   // ── Derived: location status card display values ──────────────────────────
-  const cardState =
-    hasValidLocation
-      ? 'is-on'
-      : isFetchingLocation
-        ? 'is-checking'
-        : 'is-off';
+  const cardState = hasValidLocation
+    ? 'is-on'
+    : isFetchingLocation
+    ? 'is-checking'
+    : 'is-off';
 
   const statusLabel = () => {
-    if (hasValidLocation)                      return <span className="loc-status-badge badge-on">🟢 LOCATION IS ON</span>;
-    if (isFetchingLocation)                    return <span className="loc-status-badge badge-checking">🔄 CHECKING LOCATION...</span>;
-    if (locationPermStatus === 'denied')       return <span className="loc-status-badge badge-off">🔒 PERMISSION DENIED</span>;
-    if (locationPermStatus === 'denied_permanently') return <span className="loc-status-badge badge-off">🔒 BLOCKED IN SETTINGS</span>;
-    if (locationPermStatus === 'services_off') return <span className="loc-status-badge badge-off">📵 LOCATION SERVICES OFF</span>;
-    if (locationPermStatus === 'unavailable')  return <span className="loc-status-badge badge-off">❌ GPS UNAVAILABLE</span>;
-    return <span className="loc-status-badge badge-off">⚠️ LOCATION NOT DETECTED</span>;
+    if (hasValidLocation) {
+      return <span className="loc-status-badge badge-on">🟢 Location Detected</span>;
+    }
+    if (locationPermStatus === 'requesting') {
+      return (
+        <span className="loc-status-badge badge-checking">
+          📍 Requesting Location Permission...
+        </span>
+      );
+    }
+    if (isFetchingLocation) {
+      return (
+        <span className="loc-status-badge badge-checking">
+          🔄 Acquiring GPS Location...
+        </span>
+      );
+    }
+    if (isPermanentlyDenied || locationPermStatus === 'denied') {
+      return (
+        <span className="loc-status-badge badge-off">
+          🔒 Location Permission Denied
+        </span>
+      );
+    }
+    if (isServicesOff) {
+      return (
+        <span className="loc-status-badge badge-off">
+          📵 Location Services Disabled
+        </span>
+      );
+    }
+    if (isTimeout) {
+      return (
+        <span className="loc-status-badge badge-off">
+          ⏱️ Location Request Timed Out
+        </span>
+      );
+    }
+    if (isUnavailable) {
+      return (
+        <span className="loc-status-badge badge-off">
+          ❌ Geolocation Unavailable
+        </span>
+      );
+    }
+    return <span className="loc-status-badge badge-off">📍 Location Not Connected</span>;
   };
 
   const statusSubtext = () => {
-    if (hasValidLocation)
+    if (hasValidLocation) {
       return (
         <span className="loc-coords-text">
-          GPS: {currentLocation.lat.toFixed(4)}°, {currentLocation.lng.toFixed(4)}° • Ready to track
+          GPS: {currentLocation.lat.toFixed(4)}°, {currentLocation.lng.toFixed(4)}° • Real device coordinates
         </span>
       );
-    if (isFetchingLocation)
-      return <span>Checking your phone's location...</span>;
-    if (locationPermStatus === 'denied' || locationPermStatus === 'denied_permanently')
+    }
+    if (locationPermStatus === 'requesting') {
+      return <span>Please tap "Allow" on your browser's location permission prompt.</span>;
+    }
+    if (isFetchingLocation) {
+      return <span>Connecting to device GPS satellites...</span>;
+    }
+    if (isPermanentlyDenied) {
       return (
         <span>
-          {isPermanentlyDenied
-            ? 'Open Settings → Apps → Arrivo → Permissions → Location → Allow.'
-            : 'Tap "Retry Location" to allow access.'}
+          Location access is blocked. Tap the 🔒 lock icon in your address bar → Site Settings → Location → Allow, then retry.
         </span>
       );
-    if (locationPermStatus === 'services_off')
-      return <span>Enable Location in Android Quick Settings (swipe down ▾) then tap Retry.</span>;
-    if (locationError)
+    }
+    if (isServicesOff) {
+      return (
+        <span>
+          Device GPS is turned off. Web apps cannot turn on GPS automatically. Please swipe down Android Quick Settings, enable Location, and tap Retry.
+        </span>
+      );
+    }
+    if (isTimeout) {
+      return (
+        <span>
+          GPS timed out before receiving a satellite fix. Move towards a window or outdoors, and tap Retry.
+        </span>
+      );
+    }
+    if (isUnavailable) {
+      return (
+        <span>
+          Geolocation requires a secure connection (HTTPS). This site is not served over HTTPS.
+        </span>
+      );
+    }
+    if (locationError) {
       return <span>{locationError}</span>;
-    return <span>Tap "Check Location" to detect your position.</span>;
+    }
+    return <span>Click "Start Trip" or "Enable Location" to detect your position.</span>;
   };
 
   const checkBtnLabel = () => {
-    if (isFetchingLocation) return <><span className="loc-btn-spinner" /><span>Checking...</span></>;
-    if (hasValidLocation)   return '🔄 Re-check';
-    if (locationPermStatus === 'denied' || locationPermStatus === 'prompt' || locationPermStatus === 'idle')
-      return '⚡ Check Location';
+    if (isFetchingLocation) {
+      return (
+        <>
+          <span className="loc-btn-spinner" />
+          <span>Checking...</span>
+        </>
+      );
+    }
+    if (hasValidLocation) return '🔄 Re-check';
+    if (locationPermStatus === 'prompt' || locationPermStatus === 'idle') {
+      return '📍 Enable Location';
+    }
     return '🔄 Retry Location';
   };
 
@@ -383,7 +478,7 @@ export default function App() {
         <section className="layout-col primary-col">
           {!isTripActive ? (
             <>
-              {/* ── Location Status Card ── */}
+              {/* ── Location Status Card (Shows all 6 states) ── */}
               <div className={`device-location-status-card ${cardState}`}>
                 <div className="loc-status-left">
                   <div className="loc-status-icon-bubble">
@@ -400,12 +495,10 @@ export default function App() {
                     <div className="loc-status-title">
                       {statusLabel()}
                       {hasValidLocation && lastUpdated && (
-                        <span className="loc-status-time">Checked {lastUpdated}</span>
+                        <span className="loc-status-time">Fix: {lastUpdated}</span>
                       )}
                     </div>
-                    <div className="loc-status-subtext">
-                      {statusSubtext()}
-                    </div>
+                    <div className="loc-status-subtext">{statusSubtext()}</div>
                   </div>
                 </div>
 
@@ -484,25 +577,28 @@ export default function App() {
               style={{ marginBottom: '0.4rem', color: 'var(--accent-blue)' }}
             >
               <span>🛡️</span>
-              <span>Bus Travel Guide &amp; Tips</span>
+              <span>Bus Travel Guide &amp; Background Tips</span>
             </div>
             <ul className="travel-tips-list">
               <li>
-                <strong>📱 Keep Screen / Audio Active:</strong> Keep the app
-                open and ensure your media volume is unmuted so you don't miss
-                the alarm.
+                <strong>📱 Screen Wake Lock Active:</strong> While your trip is
+                running, the app requests a Screen Wake Lock to prevent your phone
+                from sleeping automatically.
               </li>
               <li>
-                <strong>🔋 Battery Saving:</strong> Location tracking can use
-                battery, especially with high-accuracy GPS.
-              </li>
-              <li>
-                <strong>📍 GPS Accuracy:</strong> Location accuracy depends on
-                device settings, signal, and surroundings.
-              </li>
-              <li>
-                <strong>🔒 Keep App Open:</strong> For best results keep the app
+                <strong>🔒 Keep Tab Open in Foreground:</strong> Mobile browsers
+                (Chrome / Safari) aggressively suspend JavaScript timers and GPS
+                tracking when tabs are minimized or the screen is locked. Keep this tab
                 in the foreground during your journey.
+              </li>
+              <li>
+                <strong>🔊 Media Volume:</strong> Ensure your phone's media volume
+                is turned up so you can hear the repeating siren alert.
+              </li>
+              <li>
+                <strong>🛣️ Road Distance Accuracy:</strong> Distances are
+                calculated along real driving highways and roads via OSRM routing,
+                matching Google Maps navigation.
               </li>
             </ul>
           </div>
@@ -518,14 +614,17 @@ export default function App() {
         onStopAlarm={handleStopAlarm}
       />
 
-      {/* ── Location Permission Dialog ── */}
+      {/* ── Location Permission Recovery Dialog ── */}
       <LocationPermissionDialog
         isOpen={isPermDialogOpen}
         isRequesting={isFetchingLocation}
         locationError={locationError}
         locationPermStatus={locationPermStatus}
+        locationFixStatus={locationFixStatus}
         isPermanentlyDenied={isPermanentlyDenied}
         isServicesOff={isServicesOff}
+        isTimeout={isTimeout}
+        isUnavailable={isUnavailable}
         isNative={isNative}
         onTurnOnLocation={handleDialogTurnOnLocation}
         onNoThanks={handleNoThanks}

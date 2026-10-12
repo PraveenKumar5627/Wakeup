@@ -1,32 +1,23 @@
-﻿/**
+/**
  * useLocationPermission — Custom React hook
  *
- * Manages the entire Capacitor / browser location-permission lifecycle:
- *   1. On mount: silently checks permission status and location-services state.
- *   2. Exposes `requestPermission()` so callers can trigger the native dialog
- *      in response to a deliberate user action (required by Android).
- *   3. Exposes `getCurrentLocation()` to fetch a single GPS fix after permission
- *      is confirmed.
- *   4. Exposes `startWatch()` / `stopWatch()` for continuous trip tracking.
- *   5. Handles returning from Android Settings via the Page-Visibility API.
- *
- * Permission states  (locationPermStatus):
- *   'idle'               - not yet checked
- *   'checking'           - running a permission / services check
- *   'prompt'             - permission not yet asked; safe to request via user gesture
- *   'granted'            - permission confirmed and a location fix is available
- *   'denied'             - denied once; can still ask again via requestPermission()
- *   'denied_permanently' - permanently denied; must open Settings
- *   'services_off'       - device Location toggle is off
- *   'unavailable'        - geolocation API entirely absent
- *   'error'              - unexpected error
- *
- * Location fix states (locationFixStatus):
- *   'idle'     - no fix attempted
- *   'fetching' - getCurrentPosition in progress
- *   'ok'       - valid fix received
- *   'timeout'  - fix took too long
- *   'error'    - GPS / network error
+ * Manages the browser & Capacitor location-permission lifecycle cleanly:
+ *   1. On mount: silently checks permission status via Permissions API without
+ *      triggering any popup or prompt.
+ *   2. When user clicks "Start Trip" (or "Enable Location"): invokes
+ *      `requestPermission()`, which calls `navigator.geolocation.getCurrentPosition()`
+ *      on web to trigger the browser's native location permission dialog.
+ *   3. Exposes real device latitude and longitude (never fake or hardcoded).
+ *   4. Accurately identifies all states:
+ *      - loading / requesting / checking
+ *      - success (granted + valid fix)
+ *      - permission-denied (denied / denied_permanently)
+ *      - location-disabled (services_off - device GPS toggle is OFF)
+ *      - timeout (timed out waiting for satellite fix)
+ *      - location-unavailable (unsupported browser or insecure HTTP)
+ *   5. Continuous movement tracking via `startWatch()` (`navigator.geolocation.watchPosition`).
+ *   6. Clean tracking teardown via `stopWatch()` (`navigator.geolocation.clearWatch`).
+ *   7. Re-checks permission status on tab visibility change or Permissions API change.
  */
 
 import { useState, useEffect, useRef, useCallback } from 'react';
@@ -38,7 +29,7 @@ import { Geolocation } from '@capacitor/geolocation';
 // ---------------------------------------------------------------------------
 
 /** Max age (ms) of a cached fix before we consider it stale. */
-const FIX_STALE_MS = 90000; // 90 s
+const FIX_STALE_MS = 60000; // 60 s
 
 /** Minimum distance (metres) between updates to suppress GPS jitter. */
 const MIN_DISPLACEMENT_M = 15;
@@ -62,16 +53,21 @@ function haversineMetres(lat1, lng1, lat2, lng2) {
 export function useLocationPermission() {
   const isNative = Capacitor.isNativePlatform();
 
+  // Perm status: 'idle' | 'checking' | 'requesting' | 'prompt' | 'granted' | 'denied' | 'denied_permanently' | 'services_off' | 'timeout' | 'unavailable' | 'error'
   const [locationPermStatus, setLocationPermStatus] = useState('idle');
-  const [locationFixStatus, setLocationFixStatus]   = useState('idle');
-  const [currentLocation, setCurrentLocation]       = useState(null);
-  const [lastUpdated, setLastUpdated]               = useState('');
-  const [locationError, setLocationError]           = useState(null);
 
-  const watchIdRef          = useRef(null);
+  // Fix status: 'idle' | 'fetching' | 'ok' | 'denied' | 'services_off' | 'timeout' | 'unavailable' | 'error'
+  const [locationFixStatus, setLocationFixStatus] = useState('idle');
+
+  const [currentLocation, setCurrentLocation] = useState(null);
+  const [lastUpdated, setLastUpdated] = useState('');
+  const [locationError, setLocationError] = useState(null);
+
+  const watchIdRef = useRef(null);
   const lastFixTimestampRef = useRef(0);
-  const lastFixCoordsRef    = useRef(null);
-  const isFetchingRef       = useRef(false);
+  const lastFixCoordsRef = useRef(null);
+  const isFetchingRef = useRef(false);
+  const hasCheckedInitialRef = useRef(false);
 
   // ---- helpers ----
 
@@ -79,21 +75,30 @@ export function useLocationPermission() {
     if (!error) return 'Unable to access location.';
     if (native) {
       const msg = (error?.message || '').toLowerCase();
-      if (msg.includes('denied') || msg.includes('permission'))
-        return 'Location permission is blocked. Tap "Retry Location" and grant access.';
-      if (msg.includes('position unavailable') || msg.includes('timeout'))
-        return 'Could not get a GPS fix. Move to an open area and try again.';
+      if (msg.includes('denied') || msg.includes('permission')) {
+        return 'Location permission is blocked. Open Settings > Apps > Permissions > Location and select "Allow".';
+      }
+      if (msg.includes('disabled') || msg.includes('services') || msg.includes('provider')) {
+        return 'Device Location is turned off. Swipe down Quick Settings on your phone and turn ON Location.';
+      }
+      if (msg.includes('position unavailable') || msg.includes('unavailable')) {
+        return 'Device GPS is unavailable or disabled. Ensure Location is turned ON in Android Quick Settings.';
+      }
+      if (msg.includes('timeout')) {
+        return 'GPS fix timed out. Move towards a window or outdoors and retry.';
+      }
       return error.message || 'Location error.';
     }
+
     switch (error?.code) {
-      case 1:
-        return 'Location permission denied. Allow Location in browser Site Settings.';
-      case 2:
-        return 'Could not determine your location. Turn on Location in device settings.';
-      case 3:
-        return 'Location request timed out. Ensure GPS is on and try again.';
+      case 1: // PERMISSION_DENIED
+        return 'Location permission denied. Please allow location access in your browser site settings.';
+      case 2: // POSITION_UNAVAILABLE — device GPS is turned OFF or no signal
+        return 'Device location is turned off or unavailable. Please swipe down Quick Settings on your phone and turn ON Location (GPS).';
+      case 3: // TIMEOUT
+        return 'Location request timed out. Please ensure GPS is on and you have a clear view of the sky, then retry.';
       default:
-        return error?.message || 'Unable to access location.';
+        return error?.message || 'Unable to access device location.';
     }
   }, []);
 
@@ -103,49 +108,76 @@ export function useLocationPermission() {
     return haversineMetres(prev.lat, prev.lng, lat, lng) >= MIN_DISPLACEMENT_M;
   }, []);
 
-  // ---- check permission (no dialog) ----
+  /** Returns true if geolocation can potentially work (HTTPS or localhost). */
+  const isSecureContextAvailable = useCallback(() => {
+    if (typeof window !== 'undefined' && window.isSecureContext === false) {
+      return false;
+    }
+    return true;
+  }, []);
+
+  // ---- check permission silently (no dialog, no prompt) ----
 
   const checkPermissionStatus = useCallback(async () => {
     setLocationPermStatus('checking');
     setLocationError(null);
 
     try {
+      if (!isSecureContextAvailable()) {
+        setLocationPermStatus('unavailable');
+        setLocationFixStatus('unavailable');
+        setLocationError(
+          'Geolocation requires a secure connection (HTTPS). This site is not served over HTTPS.'
+        );
+        return 'unavailable';
+      }
+
       if (isNative) {
         const result = await Geolocation.checkPermissions();
-        const state  = result?.location ?? result?.coarseLocation ?? 'prompt';
+        const state = result?.location ?? result?.coarseLocation ?? 'prompt';
 
         if (state === 'granted') {
           setLocationPermStatus('granted');
           return 'granted';
         } else if (state === 'denied') {
-          setLocationPermStatus('denied');
+          setLocationPermStatus('denied_permanently');
+          setLocationFixStatus('denied');
           setLocationError(
-            'Location permission denied. Tap "Retry Location" or go to Settings > Apps > Arrivo > Permissions > Location.'
+            'Location permission denied. Go to Settings > Apps > Permissions > Location > Allow.'
           );
-          return 'denied';
+          return 'denied_permanently';
         } else {
           setLocationPermStatus('prompt');
           return 'prompt';
         }
       } else {
+        // Web browser path
         if (!navigator?.geolocation) {
           setLocationPermStatus('unavailable');
+          setLocationFixStatus('unavailable');
           setLocationError('Geolocation is not supported by this browser.');
           return 'unavailable';
         }
 
         if (navigator.permissions?.query) {
-          const perm = await navigator.permissions.query({ name: 'geolocation' });
-          if (perm.state === 'granted') {
-            setLocationPermStatus('granted');
-            return 'granted';
-          } else if (perm.state === 'denied') {
-            setLocationPermStatus('denied_permanently');
-            setLocationError(
-              'Location is blocked. Click the lock icon in your browser address bar and Allow Location.'
-            );
-            return 'denied_permanently';
-          } else {
+          try {
+            const perm = await navigator.permissions.query({ name: 'geolocation' });
+            if (perm.state === 'granted') {
+              setLocationPermStatus('granted');
+              return 'granted';
+            } else if (perm.state === 'denied') {
+              setLocationPermStatus('denied_permanently');
+              setLocationFixStatus('denied');
+              setLocationError(
+                'Location access is blocked. Tap the 🔒 lock icon in your browser address bar and Allow Location.'
+              );
+              return 'denied_permanently';
+            } else {
+              setLocationPermStatus('prompt');
+              return 'prompt';
+            }
+          } catch {
+            // Permissions API query not supported for geolocation
             setLocationPermStatus('prompt');
             return 'prompt';
           }
@@ -157,64 +189,11 @@ export function useLocationPermission() {
     } catch (err) {
       console.warn('[useLocationPermission] checkPermissionStatus error:', err);
       setLocationPermStatus('error');
+      setLocationFixStatus('error');
       setLocationError(err?.message || 'Unexpected error checking location permission.');
       return 'error';
     }
-  }, [isNative]);
-
-  // ---- request permission (must be called from user gesture) ----
-
-  const requestPermission = useCallback(async () => {
-    setLocationPermStatus('checking');
-    setLocationError(null);
-
-    try {
-      if (isNative) {
-        const result = await Geolocation.requestPermissions({ permissions: ['location'] });
-        const state  = result?.location ?? result?.coarseLocation ?? 'denied';
-
-        if (state === 'granted') {
-          setLocationPermStatus('granted');
-          return 'granted';
-        } else {
-          setLocationPermStatus('denied');
-          setLocationError(
-            'Permission denied. Go to Settings > Apps > Arrivo > Permissions > Location > Allow.'
-          );
-          return 'denied';
-        }
-      } else {
-        return new Promise((resolve) => {
-          navigator.geolocation.getCurrentPosition(
-            (position) => {
-              const { latitude: lat, longitude: lng } = position.coords;
-              const ts = Date.now();
-              lastFixTimestampRef.current = ts;
-              lastFixCoordsRef.current    = { lat, lng };
-              setCurrentLocation({ lat, lng });
-              setLastUpdated(new Date(ts).toLocaleTimeString());
-              setLocationPermStatus('granted');
-              setLocationFixStatus('ok');
-              setLocationError(null);
-              resolve('granted');
-            },
-            (error) => {
-              const msg = buildErrorMsg(error, false);
-              setLocationPermStatus(error?.code === 1 ? 'denied_permanently' : 'denied');
-              setLocationError(msg);
-              resolve('denied');
-            },
-            { enableHighAccuracy: false, timeout: 12000, maximumAge: 30000 }
-          );
-        });
-      }
-    } catch (err) {
-      console.warn('[useLocationPermission] requestPermission error:', err);
-      setLocationPermStatus('error');
-      setLocationError(err?.message || 'Unexpected error requesting permission.');
-      return 'error';
-    }
-  }, [isNative, buildErrorMsg]);
+  }, [isNative, isSecureContextAvailable]);
 
   // ---- get single current position fix ----
 
@@ -239,14 +218,14 @@ export function useLocationPermission() {
         position = await Geolocation.getCurrentPosition({
           enableHighAccuracy: true,
           timeout: 15000,
-          maximumAge: 30000,
+          maximumAge: 10000,
         });
       } else {
         position = await new Promise((resolve, reject) =>
           navigator.geolocation.getCurrentPosition(resolve, reject, {
             enableHighAccuracy: true,
             timeout: 15000,
-            maximumAge: 30000,
+            maximumAge: 10000,
           })
         );
       }
@@ -255,7 +234,7 @@ export function useLocationPermission() {
       const ts = Date.now();
 
       lastFixTimestampRef.current = ts;
-      lastFixCoordsRef.current    = { lat, lng };
+      lastFixCoordsRef.current = { lat, lng };
 
       setCurrentLocation({ lat, lng });
       setLastUpdated(new Date(ts).toLocaleTimeString());
@@ -267,8 +246,27 @@ export function useLocationPermission() {
     } catch (err) {
       console.warn('[useLocationPermission] getCurrentLocation error:', err);
       const msg = buildErrorMsg(err, isNative);
-      if (!isNative && err?.code === 1) setLocationPermStatus('denied_permanently');
-      setLocationFixStatus('error');
+
+      if (!isNative) {
+        if (err?.code === 1) {
+          // PERMISSION_DENIED
+          setLocationPermStatus('denied_permanently');
+          setLocationFixStatus('denied');
+        } else if (err?.code === 2) {
+          // POSITION_UNAVAILABLE — device GPS is off
+          setLocationPermStatus('services_off');
+          setLocationFixStatus('services_off');
+        } else if (err?.code === 3) {
+          // TIMEOUT
+          setLocationPermStatus('timeout');
+          setLocationFixStatus('timeout');
+        } else {
+          setLocationFixStatus('error');
+        }
+      } else {
+        setLocationFixStatus('error');
+      }
+
       setLocationError(msg);
       return null;
     } finally {
@@ -276,9 +274,93 @@ export function useLocationPermission() {
     }
   }, [isNative, buildErrorMsg]);
 
+  // ---- request permission (triggered when user clicks "Start Trip" or "Enable Location") ----
+
+  const requestPermission = useCallback(async () => {
+    setLocationPermStatus('requesting');
+    setLocationFixStatus('fetching');
+    setLocationError(null);
+
+    try {
+      if (isNative) {
+        const result = await Geolocation.requestPermissions({ permissions: ['location'] });
+        const state = result?.location ?? result?.coarseLocation ?? 'denied';
+
+        if (state === 'granted') {
+          setLocationPermStatus('granted');
+          return await getCurrentLocation({ force: true });
+        } else {
+          setLocationPermStatus('denied_permanently');
+          setLocationFixStatus('denied');
+          setLocationError(
+            'Location permission denied. Go to Settings > Apps > Permissions > Location > Allow.'
+          );
+          return null;
+        }
+      } else {
+        // Web: Calling getCurrentPosition from the user gesture triggers the browser's native dialog
+        return new Promise((resolve) => {
+          if (!navigator?.geolocation) {
+            setLocationPermStatus('unavailable');
+            setLocationFixStatus('unavailable');
+            setLocationError('Geolocation is not supported by this browser.');
+            resolve(null);
+            return;
+          }
+
+          navigator.geolocation.getCurrentPosition(
+            (position) => {
+              const { latitude: lat, longitude: lng } = position.coords;
+              const ts = Date.now();
+              lastFixTimestampRef.current = ts;
+              lastFixCoordsRef.current = { lat, lng };
+
+              setCurrentLocation({ lat, lng });
+              setLastUpdated(new Date(ts).toLocaleTimeString());
+              setLocationPermStatus('granted');
+              setLocationFixStatus('ok');
+              setLocationError(null);
+
+              resolve({ lat, lng });
+            },
+            (error) => {
+              const msg = buildErrorMsg(error, false);
+              if (error?.code === 1) {
+                // PERMISSION_DENIED
+                setLocationPermStatus('denied_permanently');
+                setLocationFixStatus('denied');
+              } else if (error?.code === 2) {
+                // POSITION_UNAVAILABLE — device GPS is turned OFF
+                setLocationPermStatus('services_off');
+                setLocationFixStatus('services_off');
+              } else if (error?.code === 3) {
+                // TIMEOUT
+                setLocationPermStatus('timeout');
+                setLocationFixStatus('timeout');
+              } else {
+                setLocationPermStatus('error');
+                setLocationFixStatus('error');
+              }
+              setLocationError(msg);
+              resolve(null);
+            },
+            { enableHighAccuracy: true, timeout: 15000, maximumAge: 10000 }
+          );
+        });
+      }
+    } catch (err) {
+      console.warn('[useLocationPermission] requestPermission error:', err);
+      setLocationPermStatus('error');
+      setLocationFixStatus('error');
+      setLocationError(err?.message || 'Unexpected error requesting permission.');
+      return null;
+    }
+  }, [isNative, buildErrorMsg, getCurrentLocation]);
+
   // ---- start continuous watch ----
 
   const startWatch = useCallback((onLocationUpdate, onWatchError) => {
+    // Clear any existing watcher first
     if (watchIdRef.current !== null) {
       if (isNative) {
         Geolocation.clearWatch({ id: watchIdRef.current }).catch(() => {});
@@ -295,11 +377,12 @@ export function useLocationPermission() {
 
       const ts = Date.now();
       lastFixTimestampRef.current = ts;
-      lastFixCoordsRef.current    = { lat, lng };
+      lastFixCoordsRef.current = { lat, lng };
 
       setCurrentLocation({ lat, lng });
       setLastUpdated(new Date(ts).toLocaleTimeString());
       setLocationFixStatus('ok');
+      setLocationPermStatus('granted');
       setLocationError(null);
 
       onLocationUpdate && onLocationUpdate({ lat, lng });
@@ -307,6 +390,17 @@ export function useLocationPermission() {
 
     const handleError = (error) => {
       const msg = buildErrorMsg(error, isNative);
+      if (!isNative) {
+        if (error?.code === 1) {
+          setLocationPermStatus('denied_permanently');
+          setLocationFixStatus('denied');
+        } else if (error?.code === 2) {
+          setLocationPermStatus('services_off');
+          setLocationFixStatus('services_off');
+        } else if (error?.code === 3) {
+          setLocationFixStatus('timeout');
+        }
+      }
       setLocationError(msg);
       onWatchError && onWatchError(msg);
     };
@@ -350,18 +444,89 @@ export function useLocationPermission() {
 
   // ---- lifecycle effects ----
 
-  // Silent check on mount
+  // EFFECT 1: Silent permission check on mount
+  // Does NOT request location if status is 'prompt' — waits until user clicks Start Trip.
+  // If permission was already granted previously, fetches real location silently.
   useEffect(() => {
-    checkPermissionStatus();
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+    if (hasCheckedInitialRef.current) return;
+    hasCheckedInitialRef.current = true;
 
-  // Recheck when returning from Android Settings
+    let cancelled = false;
+
+    const init = async () => {
+      const status = await checkPermissionStatus();
+      if (cancelled) return;
+
+      if (status === 'granted') {
+        // Permission was already granted in a previous visit — silently fetch fix
+        getCurrentLocation();
+      }
+      // If status is 'prompt' or other, do NOT trigger any prompt or popup.
+    };
+
+    init();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [checkPermissionStatus, getCurrentLocation]);
+
+  // EFFECT 2: Listen for permission state changes via the Permissions API
+  useEffect(() => {
+    if (isNative) return;
+    if (!navigator?.permissions?.query) return;
+
+    let permStatus = null;
+
+    const setupListener = async () => {
+      try {
+        permStatus = await navigator.permissions.query({ name: 'geolocation' });
+
+        const handleChange = () => {
+          if (permStatus.state === 'granted') {
+            setLocationPermStatus('granted');
+            setLocationError(null);
+            if (!lastFixCoordsRef.current) {
+              getCurrentLocation();
+            }
+          } else if (permStatus.state === 'denied') {
+            setLocationPermStatus('denied_permanently');
+            setLocationFixStatus('denied');
+            setLocationError(
+              'Location access is blocked. Click the lock icon in your browser address bar and Allow Location.'
+            );
+          } else {
+            setLocationPermStatus('prompt');
+          }
+        };
+
+        permStatus.addEventListener('change', handleChange);
+      } catch {
+        // Permissions API not available for geolocation
+      }
+    };
+
+    setupListener();
+
+    return () => {
+      if (permStatus) {
+        try {
+          permStatus.removeEventListener('change', () => {});
+        } catch {}
+      }
+    };
+  }, [isNative, getCurrentLocation]);
+
+  // EFFECT 3: Recheck when returning from Android Settings / browser tab refocus
   useEffect(() => {
     const handleVisibility = () => {
       if (document.visibilityState === 'visible') {
         checkPermissionStatus().then((status) => {
-          if (status === 'granted' && !lastFixCoordsRef.current) {
-            getCurrentLocation();
+          if (status === 'granted') {
+            const age = Date.now() - lastFixTimestampRef.current;
+            if (!lastFixCoordsRef.current || age > FIX_STALE_MS) {
+              getCurrentLocation({ force: true });
+            }
           }
         });
       }
@@ -370,14 +535,7 @@ export function useLocationPermission() {
     return () => document.removeEventListener('visibilitychange', handleVisibility);
   }, [checkPermissionStatus, getCurrentLocation]);
 
-  // Auto-fetch fix once permission confirmed (first time only)
-  useEffect(() => {
-    if (locationPermStatus === 'granted' && !lastFixCoordsRef.current) {
-      getCurrentLocation();
-    }
-  }, [locationPermStatus]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // Cleanup watcher on unmount
+  // EFFECT 4: Cleanup watcher on unmount
   useEffect(() => {
     return () => stopWatch();
   }, [stopWatch]);
@@ -389,9 +547,14 @@ export function useLocationPermission() {
     Date.now() - lastFixTimestampRef.current < FIX_STALE_MS;
 
   const needsPermission = ['prompt', 'denied', 'idle'].includes(locationPermStatus);
-  const isPermanentlyDenied = locationPermStatus === 'denied_permanently';
-  const isServicesOff = locationPermStatus === 'services_off';
-  const isFetchingLocation = locationFixStatus === 'fetching' || locationPermStatus === 'checking';
+  const isPermanentlyDenied = locationPermStatus === 'denied_permanently' || locationFixStatus === 'denied';
+  const isServicesOff = locationPermStatus === 'services_off' || locationFixStatus === 'services_off';
+  const isTimeout = locationPermStatus === 'timeout' || locationFixStatus === 'timeout';
+  const isUnavailable = locationPermStatus === 'unavailable' || locationFixStatus === 'unavailable';
+  const isFetchingLocation =
+    locationFixStatus === 'fetching' ||
+    locationPermStatus === 'checking' ||
+    locationPermStatus === 'requesting';
 
   return {
     locationPermStatus,
@@ -403,6 +566,8 @@ export function useLocationPermission() {
     needsPermission,
     isPermanentlyDenied,
     isServicesOff,
+    isTimeout,
+    isUnavailable,
     isFetchingLocation,
     isNative,
     checkPermissionStatus,

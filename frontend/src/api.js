@@ -69,7 +69,7 @@ export async function calculateDistance({
 
   // OSRM Direct driving route
   try {
-    const osrmUrl = `https://router.project-osrm.org/route/v1/driving/${destinationLongitude.toFixed(6)},${destinationLatitude.toFixed(6)};${currentLongitude.toFixed(6)},${currentLatitude.toFixed(6)}?overview=false`;
+    const osrmUrl = `https://router.project-osrm.org/route/v1/driving/${currentLongitude.toFixed(6)},${currentLatitude.toFixed(6)};${destinationLongitude.toFixed(6)},${destinationLatitude.toFixed(6)}?overview=false`;
     const res = await fetch(osrmUrl);
     if (res.ok) {
       const data = await res.json();

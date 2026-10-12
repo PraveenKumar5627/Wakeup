@@ -1,117 +1,185 @@
 /**
  * LocationPermissionDialog
  *
- * Shown automatically on first open (or when the user taps "Start Trip")
- * if location permission has not yet been granted.
+ * Clean and informative dialog displayed when location access cannot be obtained,
+ * explaining why location is required and how the user can enable it.
  *
- * Handles all permission states:
- *   - prompt               → explain why + "Turn on Location" button
- *   - denied               → explain + retry button
- *   - denied_permanently   → explain how to open Android/browser Settings
- *   - services_off         → explain how to enable Location in device settings
- *   - unavailable          → browser does not support geolocation
+ * Supports all distinct states:
+ *   - services_off         → Device Location (GPS) toggle is OFF in Quick Settings
+ *   - denied_permanently   → Permission blocked in browser settings (lock icon)
+ *   - timeout              → GPS satellite acquisition timed out
+ *   - unavailable          → Insecure context (HTTP) or unsupported browser
+ *   - prompt               → Informational prompt before requesting
  *
- * Never attempts to bypass system dialogs or silently access GPS.
+ * Note: Does NOT pretend to be Android's system dialog. Respects platform security
+ * and clearly instructs the user how to configure their browser and device.
  */
 
 import React, { useState } from 'react';
 
 export default function LocationPermissionDialog({
   isOpen,
-  isRequesting      = false,
-  locationError     = null,
+  isRequesting = false,
+  locationError = null,
   locationPermStatus = 'prompt',
+  locationFixStatus = 'idle',
   isPermanentlyDenied = false,
-  isServicesOff     = false,
-  isNative          = false,
+  isServicesOff = false,
+  isTimeout = false,
+  isUnavailable = false,
+  isNative = false,
   onTurnOnLocation,
   onNoThanks,
   onEnterDestinationManually,
 }) {
-  const [showGuide, setShowGuide] = useState(false);
+  const [showDetailedGuide, setShowDetailedGuide] = useState(false);
 
   if (!isOpen) return null;
 
-  // ── Decide heading and body copy based on state ──────────────────────────
-
-  const heading = () => {
-    if (isPermanentlyDenied)
-      return 'Location Access Blocked';
-    if (isServicesOff)
-      return 'Device Location is Turned Off';
-    return 'To continue, your device will need to use Location Accuracy';
+  // ── Heading ──────────────────────────────────────────────────────────────
+  const getHeading = () => {
+    if (isServicesOff) return 'Device Location is Turned Off';
+    if (isPermanentlyDenied) return 'Location Access Blocked';
+    if (isTimeout) return 'Location Request Timed Out';
+    if (isUnavailable) return 'Geolocation Unavailable';
+    return 'Location Access Required for Alarm';
   };
 
-  const body = () => {
-    if (isPermanentlyDenied) {
-      return (
-        <p className="android-loc-subtitle">
-          You permanently denied location access. To enable it:
-          {isNative ? (
-            <ol style={{ marginTop: '0.5rem', paddingLeft: '1.2rem', lineHeight: 1.7 }}>
-              <li>Open <strong>Android Settings</strong></li>
-              <li>Tap <strong>Apps → Arrivo</strong></li>
-              <li>Tap <strong>Permissions → Location</strong></li>
-              <li>Select <strong>"Allow only while using the app"</strong></li>
-              <li>Return here and tap <strong>Retry Location</strong></li>
-            </ol>
-          ) : (
-            <ol style={{ marginTop: '0.5rem', paddingLeft: '1.2rem', lineHeight: 1.7 }}>
-              <li>Tap the <strong>🔒 Lock icon</strong> in your browser address bar</li>
-              <li>Tap <strong>Permissions</strong> or <strong>Site Settings</strong></li>
-              <li>Set <strong>Location</strong> to <strong>Allow</strong></li>
-              <li>Refresh the page</li>
-            </ol>
-          )}
-        </p>
-      );
-    }
+  // ── Icon ─────────────────────────────────────────────────────────────────
+  const getHeaderIcon = () => {
+    if (isServicesOff) return '📵';
+    if (isPermanentlyDenied) return '🔒';
+    if (isTimeout) return '⏱️';
+    if (isUnavailable) return '❌';
+    return '📍';
+  };
 
+  // ── Subtitle / Explanatory Body ──────────────────────────────────────────
+  const renderBody = () => {
     if (isServicesOff) {
       return (
-        <p className="android-loc-subtitle">
-          Your device's Location toggle is off. To enable it:
-          <ol style={{ marginTop: '0.5rem', paddingLeft: '1.2rem', lineHeight: 1.7 }}>
-            <li>Swipe down from the top to open <strong>Quick Settings</strong></li>
-            <li>Tap the <strong>Location</strong> icon to turn it <strong>ON</strong></li>
-            <li>Return here and tap <strong>Retry Location</strong></li>
+        <div className="android-loc-body-content">
+          <p className="android-loc-subtitle">
+            Your phone's <strong>Location / GPS</strong> toggle is currently turned off.
+          </p>
+          <div className="android-loc-info-box">
+            <span style={{ fontSize: '1.1rem' }}>ℹ️</span>
+            <span>
+              Web browsers cannot turn on your device's GPS automatically. Please enable it in your phone settings:
+            </span>
+          </div>
+          <ol className="android-loc-step-list">
+            <li>Swipe down from the top of your phone screen to open <strong>Android Quick Settings</strong>.</li>
+            <li>Find and tap the <strong>Location</strong> (GPS) tile to turn it <strong>ON</strong>.</li>
+            <li>Return to this page and tap <strong>Retry Location</strong> below.</li>
           </ol>
-        </p>
+        </div>
       );
     }
 
+    if (isPermanentlyDenied) {
+      return (
+        <div className="android-loc-body-content">
+          <p className="android-loc-subtitle">
+            Location permission was denied for this app. To track your journey and trigger the wake-up alarm, please grant access:
+          </p>
+          {isNative ? (
+            <ol className="android-loc-step-list">
+              <li>Open your device <strong>Settings</strong>.</li>
+              <li>Go to <strong>Apps → Wakeup</strong> (or Travel Alarm).</li>
+              <li>Tap <strong>Permissions → Location</strong>.</li>
+              <li>Select <strong>"Allow only while using the app"</strong>.</li>
+              <li>Return here and tap <strong>Retry Location</strong>.</li>
+            </ol>
+          ) : (
+            <ol className="android-loc-step-list">
+              <li>Tap the <strong>🔒 Lock icon</strong> (or tune icon) in your browser address bar.</li>
+              <li>Tap <strong>Permissions</strong> or <strong>Site settings</strong>.</li>
+              <li>Change <strong>Location</strong> from Blocked to <strong>Allow</strong>.</li>
+              <li>Return here and tap <strong>Retry Location</strong> (or refresh the page).</li>
+            </ol>
+          )}
+        </div>
+      );
+    }
+
+    if (isTimeout) {
+      return (
+        <div className="android-loc-body-content">
+          <p className="android-loc-subtitle">
+            The GPS request timed out before receiving a satellite position fix.
+          </p>
+          <div className="android-loc-info-box">
+            <span>📡</span>
+            <span>
+              GPS satellites need an unobstructed line of sight. Being indoors, underground, or in heavy shielding can cause timeouts.
+            </span>
+          </div>
+          <ol className="android-loc-step-list">
+            <li>Ensure Wi-Fi or mobile data is connected to assist GPS triangulation.</li>
+            <li>Move near a window or outdoors.</li>
+            <li>Tap <strong>Retry Location</strong> below.</li>
+          </ol>
+        </div>
+      );
+    }
+
+    if (isUnavailable) {
+      return (
+        <div className="android-loc-body-content">
+          <p className="android-loc-subtitle">
+            Geolocation is unavailable on this device or network connection.
+          </p>
+          <div className="android-loc-info-box">
+            <span>🔒</span>
+            <span>
+              Modern mobile browsers strictly require a secure connection (<strong>HTTPS</strong>) to access GPS.
+            </span>
+          </div>
+        </div>
+      );
+    }
+
+    // Default 'prompt' state
     return (
-      <p className="android-loc-subtitle">
-        Smart Transit Wakeup needs your location to track your journey and
-        trigger the destination alarm. The following settings should be on:
-      </p>
+      <div className="android-loc-body-content">
+        <p className="android-loc-subtitle">
+          Smart Transit Wakeup requires access to your current GPS location to:
+        </p>
+        <ul className="android-loc-step-list" style={{ listStyleType: 'disc', paddingLeft: '1.3rem' }}>
+          <li>Continuously calculate real driving road distance to your destination.</li>
+          <li>Sound the wake-up alarm before you arrive at your stop.</li>
+        </ul>
+        <div className="android-loc-info-box" style={{ marginTop: '0.6rem' }}>
+          <span>🔔</span>
+          <span>
+            When you tap <strong>Allow Location &amp; Start</strong>, your browser will display its native permission prompt. Please choose <strong>Allow</strong>.
+          </span>
+        </div>
+      </div>
     );
   };
 
-  // ── Action button label ───────────────────────────────────────────────────
-
-  const primaryBtnLabel = () => {
-    if (isRequesting)
-      return <><span className="android-btn-spinner" /><span>Finding location...</span></>;
-    if (isPermanentlyDenied)
-      return '⚙️ Open Settings';
-    if (isServicesOff)
-      return '📍 I turned on Location';
-    if (locationPermStatus === 'denied')
-      return '🔄 Retry Location';
-    return 'Turn on location';
+  // ── Primary Action Button Label ──────────────────────────────────────────
+  const getPrimaryButtonLabel = () => {
+    if (isRequesting) {
+      return (
+        <>
+          <span className="android-btn-spinner" />
+          <span>Detecting location...</span>
+        </>
+      );
+    }
+    if (isServicesOff) return '🔄 Retry Location';
+    if (isPermanentlyDenied) return '🔄 Retry Location';
+    if (isTimeout) return '🔄 Retry Location';
+    if (isUnavailable) return 'Close';
+    return '📍 Allow Location & Start';
   };
 
-  const handlePrimary = () => {
-    if (isPermanentlyDenied && isNative) {
-      // On native Capacitor, we can open the app settings screen
-      try {
-        if (window.Capacitor?.Plugins?.App?.openUrl) {
-          window.Capacitor.Plugins.App.openUrl({ url: 'app-settings:' });
-        }
-      } catch {
-        // Ignore — user sees instructions anyway
-      }
+  const handlePrimaryClick = () => {
+    if (isUnavailable) {
+      onNoThanks && onNoThanks();
       return;
     }
     onTurnOnLocation && onTurnOnLocation();
@@ -125,51 +193,19 @@ export default function LocationPermissionDialog({
       aria-labelledby="loc-dialog-title"
     >
       <div className="android-loc-dialog-card">
-
-        {/* Title */}
-        <h2 id="loc-dialog-title" className="android-loc-title">
-          {heading()}
-        </h2>
+        {/* Header */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
+          <span style={{ fontSize: '1.6rem' }}>{getHeaderIcon()}</span>
+          <h2 id="loc-dialog-title" className="android-loc-title">
+            {getHeading()}
+          </h2>
+        </div>
 
         {/* Body */}
-        {body()}
+        {renderBody()}
 
-        {/* Setting rows — show only for the default "prompt" state */}
-        {!isPermanentlyDenied && !isServicesOff && (
-          <>
-            <div className="android-loc-setting-row">
-              <div className="android-loc-icon-wrapper" aria-hidden="true">
-                <svg className="android-loc-svg-icon" viewBox="0 0 24 24" fill="currentColor">
-                  <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z" />
-                </svg>
-              </div>
-              <div className="android-loc-setting-text">
-                <span className="android-loc-setting-name">Device location</span>
-              </div>
-            </div>
-
-            <div className="android-loc-setting-row">
-              <div className="android-loc-icon-wrapper" aria-hidden="true">
-                <svg className="android-loc-svg-icon" viewBox="0 0 24 24" fill="currentColor">
-                  <path d="M12 8c-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4-1.79-4-4-4zm8.94 3c-.46-4.17-3.77-7.48-7.94-7.94V1h-2v2.06C6.83 3.52 3.52 6.83 3.06 11H1v2h2.06c.46 4.17 3.77 7.48 7.94 7.94V23h2v-2.06c4.17-.46 7.48-3.77 7.94-7.94H23v-2h-2.06zM12 19c-3.87 0-7-3.13-7-7s3.13-7 7-7 7 3.13 7 7-3.13 7-7 7z" />
-                </svg>
-              </div>
-              <div className="android-loc-setting-text">
-                <p className="android-loc-setting-desc">
-                  <strong>Location Accuracy</strong>, which provides more accurate
-                  location for apps and services. To do this, Google periodically
-                  processes information about device sensors and wireless signals
-                  from your device to crowdsource wireless signal locations. These
-                  are used without identifying you to improve location accuracy and
-                  location-based services.
-                </p>
-              </div>
-            </div>
-          </>
-        )}
-
-        {/* Inline error notice */}
-        {locationError && !isPermanentlyDenied && !isServicesOff && (
+        {/* Inline Error Notice if present */}
+        {locationError && (
           <div className="android-loc-error-banner" role="alert">
             <span className="android-loc-error-icon">⚠️</span>
             <div className="android-loc-error-text">
@@ -180,67 +216,50 @@ export default function LocationPermissionDialog({
           </div>
         )}
 
-        {/* Learn more / settings guide */}
-        {!isPermanentlyDenied && !isServicesOff && (
-          <>
-            <p className="android-loc-footer-text">
-              You can change this at any time in location settings.{' '}
-              <button
-                type="button"
-                className="android-loc-link-btn"
-                onClick={() => setShowGuide((v) => !v)}
-              >
-                {showGuide ? 'Hide guide' : 'Manage settings or learn more'}
-              </button>
-            </p>
+        {/* Collapsible detailed guide toggle */}
+        <div style={{ marginTop: '0.2rem' }}>
+          <button
+            type="button"
+            className="android-loc-link-btn"
+            onClick={() => setShowDetailedGuide((v) => !v)}
+          >
+            {showDetailedGuide ? '▲ Hide detailed troubleshooting' : '▼ Need help with permissions or GPS?'}
+          </button>
 
-            {showGuide && (
-              <div className="android-loc-expandable-guide">
-                {isNative ? (
-                  <div className="android-loc-guide-section">
-                    <strong>📱 Android Settings:</strong>
-                    <ol>
-                      <li>Go to <strong>Settings → Location</strong> and turn it ON.</li>
-                      <li>Or swipe down the notification shade and tap the Location toggle.</li>
-                      <li>For app permissions: <strong>Settings → Apps → Arrivo → Permissions → Location → Allow</strong>.</li>
-                    </ol>
-                  </div>
-                ) : (
-                  <div className="android-loc-guide-section">
-                    <strong>🔒 Browser Site Permissions:</strong>
-                    <ol>
-                      <li>Tap the <strong>Lock icon 🔒</strong> in your browser address bar.</li>
-                      <li>Tap <strong>Permissions</strong> or <strong>Site settings</strong>.</li>
-                      <li>Set <strong>Location</strong> to <strong>Allow</strong>.</li>
-                    </ol>
-                  </div>
-                )}
-
-                {onEnterDestinationManually && (
-                  <div style={{ marginTop: '0.6rem', textAlign: 'center' }}>
-                    <button
-                      type="button"
-                      className="android-loc-manual-link"
-                      onClick={onEnterDestinationManually}
-                    >
-                      ✏️ Enter destination manually or use simulator
-                    </button>
-                  </div>
-                )}
+          {showDetailedGuide && (
+            <div className="android-loc-expandable-guide" style={{ marginTop: '0.5rem' }}>
+              <div className="android-loc-guide-section">
+                <strong>📱 Android Phone Users:</strong>
+                <ol>
+                  <li>Swipe down the status bar twice to open Quick Settings and confirm <strong>Location</strong> is highlighted ON.</li>
+                  <li>In Chrome, tap the <strong>🔒 icon</strong> left of the URL → <strong>Permissions</strong> → <strong>Location: Allow</strong>.</li>
+                  <li>Ensure Chrome has system location permission in <strong>Android Settings → Apps → Chrome → Permissions → Location</strong>.</li>
+                </ol>
               </div>
-            )}
-          </>
-        )}
+              <div className="android-loc-guide-section" style={{ marginTop: '0.4rem' }}>
+                <strong>🌐 Web Security Rule:</strong>
+                <p style={{ margin: 0 }}>
+                  Browsers strictly restrict GPS to <code>https://</code> domains or <code>localhost</code> for privacy.
+                </p>
+              </div>
+            </div>
+          )}
+        </div>
 
-        {/* Fast mode pill */}
-        {!isPermanentlyDenied && !isServicesOff && (
-          <div className="android-loc-fast-pill">
-            <span className="android-loc-fast-icon">⚡</span>
-            <span>Fast Mode: Instant access via Wi-Fi, Mobile Network &amp; GPS</span>
+        {/* Alternative: Enter destination manually or use simulator */}
+        {onEnterDestinationManually && (
+          <div style={{ textAlign: 'center', marginTop: '0.2rem' }}>
+            <button
+              type="button"
+              className="android-loc-manual-link"
+              onClick={onEnterDestinationManually}
+            >
+              ✏️ Search destination manually or use GPS simulator
+            </button>
           </div>
         )}
 
-        {/* Action buttons */}
+        {/* Action Buttons */}
         <div className="android-loc-actions">
           <button
             type="button"
@@ -248,16 +267,16 @@ export default function LocationPermissionDialog({
             onClick={onNoThanks}
             disabled={isRequesting}
           >
-            {isPermanentlyDenied ? 'Close' : 'No, thanks'}
+            {isPermanentlyDenied || isServicesOff || isUnavailable ? 'Cancel' : 'No, thanks'}
           </button>
 
           <button
             type="button"
             className="android-btn-turn-on"
-            onClick={handlePrimary}
+            onClick={handlePrimaryClick}
             disabled={isRequesting}
           >
-            {primaryBtnLabel()}
+            {getPrimaryButtonLabel()}
           </button>
         </div>
       </div>
