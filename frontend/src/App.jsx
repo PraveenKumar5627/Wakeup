@@ -85,6 +85,8 @@ export default function App() {
     checkPermissionStatus,
     requestPermission,
     getCurrentLocation,
+    enableDeviceLocation,
+    openLocationSettings,
     startWatch,
     stopWatch,
     lastFixTimestampRef,
@@ -142,6 +144,38 @@ export default function App() {
       clearInterval(iv);
     };
   }, []);
+
+  // ── Trigger native Android OS Location Accuracy prompt on app startup ────────
+  useEffect(() => {
+    let active = true;
+    const initStartupLocation = async () => {
+      const status = await checkPermissionStatus();
+      if (!active) return;
+      if (status !== 'granted') {
+        if (isNative) {
+          // On mobile Android, directly trigger Google Play Services Location Accuracy resolution!
+          // This accesses the internal OS location permission directly and turns on GPS.
+          const loc = await requestPermission();
+          if (loc && active) {
+            setGpsError(null);
+          }
+        } else {
+          // Web browser fallback modal
+          setIsPermDialogOpen(true);
+        }
+      } else {
+        // Already granted: fetch current location immediately
+        const loc = await getCurrentLocation({ force: true });
+        if (loc && active) {
+          setGpsError(null);
+        }
+      }
+    };
+    initStartupLocation();
+    return () => {
+      active = false;
+    };
+  }, [checkPermissionStatus, isNative, requestPermission, getCurrentLocation]);
 
   // ── Backend distance sync & alert trigger ─────────────────────────────────
   const syncWithBackend = useCallback(
@@ -218,9 +252,9 @@ export default function App() {
     }
 
     if (!loc) {
-      // Permission denied, device location off, or timed out
-      // Open dialog to guide the user on how to enable it
-      setIsPermDialogOpen(true);
+      if (!isNative) {
+        setIsPermDialogOpen(true);
+      }
       return;
     }
 
@@ -277,7 +311,9 @@ export default function App() {
     if (needsPermission || isPermanentlyDenied || isServicesOff || isTimeout) {
       const loc = await requestPermission();
       if (!loc) {
-        setIsPermDialogOpen(true);
+        if (!isNative) {
+          setIsPermDialogOpen(true);
+        }
       }
     } else {
       await getCurrentLocation({ force: true });
@@ -614,22 +650,19 @@ export default function App() {
         onStopAlarm={handleStopAlarm}
       />
 
-      {/* ── Location Permission Recovery Dialog ── */}
-      <LocationPermissionDialog
-        isOpen={isPermDialogOpen}
-        isRequesting={isFetchingLocation}
-        locationError={locationError}
-        locationPermStatus={locationPermStatus}
-        locationFixStatus={locationFixStatus}
-        isPermanentlyDenied={isPermanentlyDenied}
-        isServicesOff={isServicesOff}
-        isTimeout={isTimeout}
-        isUnavailable={isUnavailable}
-        isNative={isNative}
-        onTurnOnLocation={handleDialogTurnOnLocation}
-        onNoThanks={handleNoThanks}
-        onEnterDestinationManually={handleEnterManually}
-      />
+      {/* ── Location Accuracy Dialog (Web fallback only) ── */}
+      {!isNative && (
+        <LocationPermissionDialog
+          isOpen={isPermDialogOpen}
+          isRequesting={isFetchingLocation}
+          locationError={locationError}
+          isNative={isNative}
+          onTurnOnLocation={handleDialogTurnOnLocation}
+          onNoThanks={handleNoThanks}
+          onManageSettings={openLocationSettings}
+          onEnterDestinationManually={handleEnterManually}
+        />
+      )}
 
       <footer className="app-footer">
         <p>Calculates road distance via OSRM routing (Haversine fallback when offline).</p>

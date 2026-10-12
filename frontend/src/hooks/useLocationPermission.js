@@ -21,8 +21,10 @@
  */
 
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { Capacitor } from '@capacitor/core';
+import { Capacitor, registerPlugin } from '@capacitor/core';
 import { Geolocation } from '@capacitor/geolocation';
+
+const LocationEnabler = registerPlugin('LocationEnabler');
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -73,33 +75,33 @@ export function useLocationPermission() {
 
   const buildErrorMsg = useCallback((error, native) => {
     if (!error) return 'Unable to access location.';
-    if (native) {
-      const msg = (error?.message || '').toLowerCase();
-      if (msg.includes('denied') || msg.includes('permission')) {
+    const msg = (error?.message || '').toLowerCase();
+
+    // Permission denied
+    if (msg.includes('denied') || msg.includes('permission') || error?.code === 1) {
+      if (native) {
         return 'Location permission is blocked. Open Settings > Apps > Permissions > Location and select "Allow".';
       }
-      if (msg.includes('disabled') || msg.includes('services') || msg.includes('provider')) {
-        return 'Device Location is turned off. Swipe down Quick Settings on your phone and turn ON Location.';
-      }
-      if (msg.includes('position unavailable') || msg.includes('unavailable')) {
-        return 'Device GPS is unavailable or disabled. Ensure Location is turned ON in Android Quick Settings.';
-      }
-      if (msg.includes('timeout')) {
-        return 'GPS fix timed out. Move towards a window or outdoors and retry.';
-      }
-      return error.message || 'Location error.';
+      return 'Location permission denied. Please allow location access in your browser site settings.';
     }
 
-    switch (error?.code) {
-      case 1: // PERMISSION_DENIED
-        return 'Location permission denied. Please allow location access in your browser site settings.';
-      case 2: // POSITION_UNAVAILABLE — device GPS is turned OFF or no signal
-        return 'Device location is turned off or unavailable. Please swipe down Quick Settings on your phone and turn ON Location (GPS).';
-      case 3: // TIMEOUT
-        return 'Location request timed out. Please ensure GPS is on and you have a clear view of the sky, then retry.';
-      default:
-        return error?.message || 'Unable to access device location.';
+    // Location services / GPS turned off
+    if (
+      msg.includes('disabled') ||
+      msg.includes('services') ||
+      msg.includes('provider') ||
+      msg.includes('position unavailable') ||
+      error?.code === 2
+    ) {
+      return 'Device Location is turned off. Swipe down Quick Settings on your phone and turn ON Location.';
     }
+
+    // Timeout
+    if (msg.includes('timeout') || error?.code === 3) {
+      return 'Location request timed out. Please ensure GPS is on and you have a clear view of the sky, then retry.';
+    }
+
+    return error.message || 'Unable to access device location.';
   }, []);
 
   const isMeaningfulFix = useCallback((lat, lng) => {
@@ -133,8 +135,25 @@ export function useLocationPermission() {
       }
 
       if (isNative) {
+        let isGpsOn = true;
+        if (LocationEnabler) {
+          try {
+            const locCheck = await LocationEnabler.isLocationEnabled();
+            isGpsOn = locCheck?.enabled ?? false;
+          } catch (e) {
+            console.warn('[useLocationPermission] isLocationEnabled error:', e);
+          }
+        }
+
         const result = await Geolocation.checkPermissions();
         const state = result?.location ?? result?.coarseLocation ?? 'prompt';
+
+        if (!isGpsOn) {
+          setLocationPermStatus('services_off');
+          setLocationFixStatus('services_off');
+          setLocationError('Device Location is turned off. Please turn ON Location.');
+          return 'services_off';
+        }
 
         if (state === 'granted') {
           setLocationPermStatus('granted');
@@ -246,23 +265,23 @@ export function useLocationPermission() {
     } catch (err) {
       console.warn('[useLocationPermission] getCurrentLocation error:', err);
       const msg = buildErrorMsg(err, isNative);
+      const rawMsg = (err?.message || '').toLowerCase();
 
-      if (!isNative) {
-        if (err?.code === 1) {
-          // PERMISSION_DENIED
-          setLocationPermStatus('denied_permanently');
-          setLocationFixStatus('denied');
-        } else if (err?.code === 2) {
-          // POSITION_UNAVAILABLE — device GPS is off
-          setLocationPermStatus('services_off');
-          setLocationFixStatus('services_off');
-        } else if (err?.code === 3) {
-          // TIMEOUT
-          setLocationPermStatus('timeout');
-          setLocationFixStatus('timeout');
-        } else {
-          setLocationFixStatus('error');
-        }
+      if (err?.code === 1 || rawMsg.includes('denied') || rawMsg.includes('permission')) {
+        setLocationPermStatus('denied_permanently');
+        setLocationFixStatus('denied');
+      } else if (
+        err?.code === 2 ||
+        rawMsg.includes('location services are not enabled') ||
+        rawMsg.includes('disabled') ||
+        rawMsg.includes('services') ||
+        rawMsg.includes('provider')
+      ) {
+        setLocationPermStatus('services_off');
+        setLocationFixStatus('services_off');
+      } else if (err?.code === 3 || rawMsg.includes('timeout')) {
+        setLocationPermStatus('timeout');
+        setLocationFixStatus('timeout');
       } else {
         setLocationFixStatus('error');
       }
@@ -283,8 +302,27 @@ export function useLocationPermission() {
 
     try {
       if (isNative) {
-        const result = await Geolocation.requestPermissions({ permissions: ['location'] });
-        const state = result?.location ?? result?.coarseLocation ?? 'denied';
+        // 1. Ensure Android OS Location Accuracy is turned on via Google Play Services resolution dialog
+        if (LocationEnabler) {
+          try {
+            await LocationEnabler.enableLocation();
+          } catch (e) {
+            console.warn('[useLocationPermission] LocationEnabler error:', e);
+          }
+        }
+
+        // 2. Request / check runtime location permissions
+        let state = 'granted';
+        try {
+          const permResult = await Geolocation.checkPermissions();
+          state = permResult?.location ?? permResult?.coarseLocation ?? 'prompt';
+          if (state !== 'granted') {
+            const reqResult = await Geolocation.requestPermissions({ permissions: ['location'] });
+            state = reqResult?.location ?? reqResult?.coarseLocation ?? 'denied';
+          }
+        } catch (permErr) {
+          console.warn('[useLocationPermission] Geolocation.requestPermissions error:', permErr);
+        }
 
         if (state === 'granted') {
           setLocationPermStatus('granted');
@@ -325,16 +363,21 @@ export function useLocationPermission() {
             },
             (error) => {
               const msg = buildErrorMsg(error, false);
-              if (error?.code === 1) {
-                // PERMISSION_DENIED
+              const rawMsg = (error?.message || '').toLowerCase();
+
+              if (error?.code === 1 || rawMsg.includes('denied') || rawMsg.includes('permission')) {
                 setLocationPermStatus('denied_permanently');
                 setLocationFixStatus('denied');
-              } else if (error?.code === 2) {
-                // POSITION_UNAVAILABLE — device GPS is turned OFF
+              } else if (
+                error?.code === 2 ||
+                rawMsg.includes('location services are not enabled') ||
+                rawMsg.includes('disabled') ||
+                rawMsg.includes('services') ||
+                rawMsg.includes('provider')
+              ) {
                 setLocationPermStatus('services_off');
                 setLocationFixStatus('services_off');
-              } else if (error?.code === 3) {
-                // TIMEOUT
+              } else if (error?.code === 3 || rawMsg.includes('timeout')) {
                 setLocationPermStatus('timeout');
                 setLocationFixStatus('timeout');
               } else {
@@ -350,9 +393,29 @@ export function useLocationPermission() {
       }
     } catch (err) {
       console.warn('[useLocationPermission] requestPermission error:', err);
-      setLocationPermStatus('error');
-      setLocationFixStatus('error');
-      setLocationError(err?.message || 'Unexpected error requesting permission.');
+      const msg = buildErrorMsg(err, isNative);
+      const rawMsg = (err?.message || '').toLowerCase();
+
+      if (err?.code === 1 || rawMsg.includes('denied') || rawMsg.includes('permission')) {
+        setLocationPermStatus('denied_permanently');
+        setLocationFixStatus('denied');
+      } else if (
+        err?.code === 2 ||
+        rawMsg.includes('location services are not enabled') ||
+        rawMsg.includes('disabled') ||
+        rawMsg.includes('services') ||
+        rawMsg.includes('provider')
+      ) {
+        setLocationPermStatus('services_off');
+        setLocationFixStatus('services_off');
+      } else if (err?.code === 3 || rawMsg.includes('timeout')) {
+        setLocationPermStatus('timeout');
+        setLocationFixStatus('timeout');
+      } else {
+        setLocationPermStatus('error');
+        setLocationFixStatus('error');
+      }
+      setLocationError(msg);
       return null;
     }
   }, [isNative, buildErrorMsg, getCurrentLocation]);
@@ -390,16 +453,23 @@ export function useLocationPermission() {
 
     const handleError = (error) => {
       const msg = buildErrorMsg(error, isNative);
-      if (!isNative) {
-        if (error?.code === 1) {
-          setLocationPermStatus('denied_permanently');
-          setLocationFixStatus('denied');
-        } else if (error?.code === 2) {
-          setLocationPermStatus('services_off');
-          setLocationFixStatus('services_off');
-        } else if (error?.code === 3) {
-          setLocationFixStatus('timeout');
-        }
+      const rawMsg = (error?.message || '').toLowerCase();
+
+      if (error?.code === 1 || rawMsg.includes('denied') || rawMsg.includes('permission')) {
+        setLocationPermStatus('denied_permanently');
+        setLocationFixStatus('denied');
+      } else if (
+        error?.code === 2 ||
+        rawMsg.includes('location services are not enabled') ||
+        rawMsg.includes('disabled') ||
+        rawMsg.includes('services') ||
+        rawMsg.includes('provider')
+      ) {
+        setLocationPermStatus('services_off');
+        setLocationFixStatus('services_off');
+      } else if (error?.code === 3 || rawMsg.includes('timeout')) {
+        setLocationPermStatus('timeout');
+        setLocationFixStatus('timeout');
       }
       setLocationError(msg);
       onWatchError && onWatchError(msg);
@@ -556,6 +626,29 @@ export function useLocationPermission() {
     locationPermStatus === 'checking' ||
     locationPermStatus === 'requesting';
 
+  const enableDeviceLocation = useCallback(async () => {
+    if (isNative && LocationEnabler) {
+      try {
+        const res = await LocationEnabler.enableLocation();
+        return res?.enabled ?? false;
+      } catch (e) {
+        console.warn('[useLocationPermission] enableDeviceLocation error:', e);
+        return false;
+      }
+    }
+    return true;
+  }, [isNative]);
+
+  const openLocationSettings = useCallback(async () => {
+    if (isNative && LocationEnabler) {
+      try {
+        await LocationEnabler.openLocationSettings();
+      } catch (e) {
+        console.warn('[useLocationPermission] openLocationSettings error:', e);
+      }
+    }
+  }, [isNative]);
+
   return {
     locationPermStatus,
     locationFixStatus,
@@ -573,6 +666,8 @@ export function useLocationPermission() {
     checkPermissionStatus,
     requestPermission,
     getCurrentLocation,
+    enableDeviceLocation,
+    openLocationSettings,
     startWatch,
     stopWatch,
     lastFixTimestampRef,
