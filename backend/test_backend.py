@@ -126,3 +126,63 @@ def test_invalid_alert_distance():
     }
     response = client.post("/calculate-distance", json=payload)
     assert response.status_code == 422
+
+
+def test_calculate_distance_straight_shorter_than_road_does_not_trigger():
+    """
+    SITRA Route Scenario:
+    Road driving distance is ~2.44 km.
+    Straight-line distance is ~1.59 km.
+    User alert threshold = 1.8 km.
+    Alert must NOT trigger because road distance (2.44 km) > 1.8 km.
+    """
+    payload = {
+        "current_latitude": 11.0503,
+        "current_longitude": 77.0310,
+        "destination_latitude": 11.0369,
+        "destination_longitude": 77.0362,
+        "alert_distance": 1.8,
+    }
+    response = client.post("/calculate-distance", json=payload)
+    assert response.status_code == 200
+    data = response.json()
+    assert data["distance_km"] > 1.8
+    assert data["alert"] is False
+    assert "On the way" in data["message"]
+
+
+def test_cors_capacitor_android():
+    """Capacitor Android app sends Origin: http://localhost which must be allowed."""
+    response = client.options(
+        "/calculate-distance",
+        headers={
+            "Origin": "http://localhost",
+            "Access-Control-Request-Method": "POST",
+        },
+    )
+    assert response.headers.get("access-control-allow-origin") == "http://localhost"
+
+
+def test_cors_capacitor_ios():
+    """Capacitor iOS app sends Origin: capacitor://localhost which must be allowed."""
+    response = client.options(
+        "/calculate-distance",
+        headers={
+            "Origin": "capacitor://localhost",
+            "Access-Control-Request-Method": "POST",
+        },
+    )
+    assert response.headers.get("access-control-allow-origin") == "capacitor://localhost"
+
+
+def test_cors_production_web():
+    """Production web frontend on Vercel must be allowed."""
+    response = client.options(
+        "/calculate-distance",
+        headers={
+            "Origin": "https://wakeup-ashy.vercel.app",
+            "Access-Control-Request-Method": "POST",
+        },
+    )
+    assert response.headers.get("access-control-allow-origin") == "https://wakeup-ashy.vercel.app"
+

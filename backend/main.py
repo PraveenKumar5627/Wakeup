@@ -35,12 +35,18 @@ app.add_middleware(
         "https://wakeup-ashy.vercel.app",   # Vercel production
         "http://localhost:5173",             # Vite local dev
         "http://localhost:3000",             # Alt local dev port
-        "http://127.0.0.1:8000",
-        "https://localhost",
-        "capacitor://localhost",
-
+        "http://localhost:8000",             # Local API dev port
+        "http://localhost",                  # Capacitor Android default WebView origin
+        "https://localhost",                 # Capacitor HTTPS scheme
+        "capacitor://localhost",             # Capacitor iOS custom scheme
+        "ionic://localhost",                 # Ionic/Capacitor mobile origin
+        "http://127.0.0.1:5173",             # Vite local dev (IP)
+        "http://127.0.0.1:3000",             # Alt local dev port (IP)
+        "http://127.0.0.1:8000",             # Local API dev (IP)
+        "http://10.0.2.2:8000",              # Android Emulator host loopback
+        "http://10.0.2.2:5173",              # Android Emulator Vite dev loopback
     ],
-    allow_origin_regex=r"https://.*\.vercel\.app",
+    allow_origin_regex=r"^https?://(localhost|127\.0\.0\.1|10\.0\.2\.2)(:\d+)?$|^https://.*\.vercel\.app$|^capacitor://localhost$|^ionic://localhost$",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -142,6 +148,7 @@ def haversine_distance(lat1: float, lon1: float, lat2: float, lon2: float) -> fl
 # -----------------------------------------------------------------------------
 _ROUTING_CACHE = {}
 _CACHE_TTL_SECONDS = 30.0
+_MAX_CACHE_ENTRIES = 1000
 
 
 def format_duration(duration_minutes: float) -> str:
@@ -209,7 +216,17 @@ def get_road_distance(
                     duration_min = round(duration_seconds / 60.0, 1)
                     duration_text = format_duration(duration_min)
 
-                    # Store in cache
+                    # Store in cache (prune if exceeds max entries)
+                    if len(_ROUTING_CACHE) >= _MAX_CACHE_ENTRIES:
+                        cutoff = now - _CACHE_TTL_SECONDS
+                        expired = [k for k, v in _ROUTING_CACHE.items() if v[0] < cutoff]
+                        for k in expired:
+                            _ROUTING_CACHE.pop(k, None)
+                        if len(_ROUTING_CACHE) >= _MAX_CACHE_ENTRIES:
+                            oldest = sorted(_ROUTING_CACHE.keys(), key=lambda k: _ROUTING_CACHE[k][0])
+                            for k in oldest[: len(oldest) // 5]:
+                                _ROUTING_CACHE.pop(k, None)
+
                     _ROUTING_CACHE[cache_key] = (now, distance_km, duration_min, duration_text)
                     return distance_km, duration_min, duration_text, "road"
     except Exception as exc:
@@ -270,15 +287,17 @@ def calculate_distance(payload: DistanceRequest):
             payload.destination_longitude,
         )
 
-        # Trigger alert if either road distance or straight-line distance is within threshold
-        is_alert = (distance_km <= payload.alert_distance) or (straight_km <= payload.alert_distance)
+        # Trigger alert strictly when the active route distance is within threshold.
+        # This prevents premature triggers when straight-line distance ("as the crow flies")
+        # is shorter than the actual road driving distance (e.g., 1.59 km straight vs 2.44 km road).
+        is_alert = distance_km <= payload.alert_distance
 
         time_part = f" (~{duration_text})" if duration_text else ""
         route_label = "road driving distance" if route_type == "road" else "straight-line"
 
         if is_alert:
             message = (
-                f"WAKE UP! Your destination is approximately {distance_km} km away {time_part} "
+                f"WAKE UP! Your destination is approximately {distance_km} km away{time_part} "
                 f"(alert threshold: {payload.alert_distance} km). Get ready to get down!"
             )
         else:
@@ -301,3 +320,10 @@ def calculate_distance(payload: DistanceRequest):
         raise HTTPException(
             status_code=500, detail=f"Failed to calculate distance: {str(exc)}"
         )
+
+
+if __name__ == "__main__":
+    import uvicorn
+
+    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
+

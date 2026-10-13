@@ -174,7 +174,7 @@ export async function calculateDistance({
   );
 
   if (roadData) {
-    const isAlert = roadData.distanceKm <= alertDistKm || straightKm <= alertDistKm;
+    const isAlert = roadData.distanceKm <= alertDistKm;
     const durText = roadData.durationText ? ` (~${roadData.durationText})` : '';
     const message = isAlert
       ? `WAKE UP! Your destination is approximately ${roadData.distanceKm} km away${durText} (alert threshold: ${alertDistKm} km). Get ready to get down!`

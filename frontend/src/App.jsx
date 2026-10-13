@@ -202,7 +202,9 @@ export default function App() {
         });
 
         // Trigger wake-up alarm when approaching selected destination threshold
-        if (result.alert && !isAlarmActive && !alarmFiredRef.current) {
+        // Safeguard: only trigger when the active remaining distance is genuinely within the chosen threshold
+        const isWithinThreshold = result.alert && (result.distance_km <= alertDistanceKm);
+        if (isWithinThreshold && !isAlarmActive && !alarmFiredRef.current) {
           alarmFiredRef.current = true;
           setIsAlarmActive(true);
           alarmAudio.startAlarm();

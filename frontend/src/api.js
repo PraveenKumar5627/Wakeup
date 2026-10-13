@@ -76,7 +76,7 @@ export async function calculateDistance({
       if (data.code === 'Ok' && data.routes && data.routes.length > 0) {
         const roadDistKm = Number((data.routes[0].distance / 1000.0).toFixed(2));
         const durMin = Number((data.routes[0].duration / 60.0).toFixed(1));
-        const isAlert = roadDistKm <= alertDistKm || straightKm <= alertDistKm;
+        const isAlert = roadDistKm <= alertDistKm;
         return {
           distance_km: roadDistKm,
           alert: isAlert,
