@@ -28,7 +28,7 @@ export async function calculateDistance({
   const destinationLongitude = Number(destLng);
   const alertDistKm = Number(alertDistance);
 
-  // Fallback Haversine straight-line distance
+  // Fast local Haversine straight-line distance (0ms)
   const R = 6371.0;
   const toRad = (deg) => (deg * Math.PI) / 180;
   const dLat = toRad(destinationLatitude - currentLatitude);
@@ -39,38 +39,14 @@ export async function calculateDistance({
   const c = 2 * Math.atan2(Math.sqrt(Math.min(1.0, Math.max(0.0, a))), Math.sqrt(1 - Math.min(1.0, Math.max(0.0, a))));
   const straightKm = Number((R * c).toFixed(2));
 
-  let backendResult = null;
-
+  // 1. OSRM Direct driving route (~150ms)
   try {
-    const response = await fetch(`${API_URL}/calculate-distance`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        alert_distance: alertDistKm,
-        current_latitude: currentLatitude,
-        current_longitude: currentLongitude,
-        destination_latitude: destinationLatitude,
-        destination_longitude: destinationLongitude,
-      }),
-    });
-
-    if (response.ok) {
-      backendResult = await response.json();
-    }
-  } catch (err) {
-    console.warn("Backend request notice in api.js:", err);
-  }
-
-  if (backendResult && backendResult.route_type === 'road') {
-    return backendResult;
-  }
-
-  // OSRM Direct driving route
-  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 2500);
     const osrmUrl = `https://router.project-osrm.org/route/v1/driving/${currentLongitude.toFixed(6)},${currentLatitude.toFixed(6)};${destinationLongitude.toFixed(6)},${destinationLatitude.toFixed(6)}?overview=false`;
-    const res = await fetch(osrmUrl);
+    const res = await fetch(osrmUrl, { signal: controller.signal });
+    clearTimeout(timeoutId);
+
     if (res.ok) {
       const data = await res.json();
       if (data.code === 'Ok' && data.routes && data.routes.length > 0) {
@@ -89,13 +65,37 @@ export async function calculateDistance({
     }
   } catch {}
 
-  if (backendResult) return backendResult;
+  // 2. Fast Backend fallback with 1.2s timeout
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 1200);
+    const response = await fetch(`${API_URL}/calculate-distance`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        alert_distance: alertDistKm,
+        current_latitude: currentLatitude,
+        current_longitude: currentLongitude,
+        destination_latitude: destinationLatitude,
+        destination_longitude: destinationLongitude,
+      }),
+      signal: controller.signal,
+    });
+    clearTimeout(timeoutId);
 
+    if (response.ok) {
+      const backendResult = await response.json();
+      if (backendResult) return backendResult;
+    }
+  } catch {}
+
+  // 3. Instant Haversine fallback (0ms)
   return {
     distance_km: straightKm,
     alert: straightKm <= alertDistKm,
     message: "On the way.",
     route_type: "straight_line",
+    duration_min: Math.round(straightKm * 2.0),
     straight_line_km: straightKm,
   };
 }

@@ -322,8 +322,350 @@ def calculate_distance(payload: DistanceRequest):
         )
 
 
+# -----------------------------------------------------------------------------
+# 7. Trip Persistence (CRUD Endpoints)
+# -----------------------------------------------------------------------------
+import os
+import uuid
+
+DATA_FILE = os.path.join(os.path.dirname(__file__), "trips_data.json")
+
+class TripItem(BaseModel):
+    id: Optional[str] = Field(default=None, description="Unique trip identifier")
+    destination_name: str = Field(..., description="Destination location name")
+    destination_city: Optional[str] = Field(default="", description="State / City or address")
+    destination_latitude: float = Field(..., description="Destination latitude")
+    destination_longitude: float = Field(..., description="Destination longitude")
+    start_latitude: Optional[float] = Field(default=None, description="Trip start latitude")
+    start_longitude: Optional[float] = Field(default=None, description="Trip start longitude")
+    alert_distance_km: float = Field(..., description="Alert threshold in kilometers")
+    distance_at_start_km: Optional[float] = Field(default=None, description="Initial total distance")
+    status: str = Field(default="completed", description="Trip status: 'active', 'completed', 'cancelled'")
+    start_time: Optional[str] = Field(default=None, description="Trip start timestamp")
+    end_time: Optional[str] = Field(default=None, description="Trip end timestamp")
+    duration_text: Optional[str] = Field(default="~ 20 min", description="Trip duration text")
+    alarm_triggered: bool = Field(default=True, description="Whether alert was triggered during trip")
+    created_at: Optional[str] = Field(default=None, description="Creation timestamp")
+
+
+def _get_seed_trips():
+    return [
+        {
+            "id": "trip-cbe-1",
+            "destination_name": "Coimbatore",
+            "destination_city": "Tamil Nadu",
+            "destination_latitude": 11.0168,
+            "destination_longitude": 76.9558,
+            "start_latitude": 11.0503,
+            "start_longitude": 77.0310,
+            "alert_distance_km": 3.0,
+            "distance_at_start_km": 5.0,
+            "status": "completed",
+            "start_time": "Today, 09:55 AM",
+            "end_time": "Today, 10:15 AM",
+            "duration_text": "~ 20 min",
+            "alarm_triggered": True,
+            "created_at": "Today, 10:15 AM",
+        },
+        {
+            "id": "trip-chn-2",
+            "destination_name": "Chennai",
+            "destination_city": "Tamil Nadu",
+            "destination_latitude": 13.0827,
+            "destination_longitude": 80.2707,
+            "start_latitude": 13.0067,
+            "start_longitude": 80.2206,
+            "alert_distance_km": 2.0,
+            "distance_at_start_km": 14.5,
+            "status": "completed",
+            "start_time": "Yesterday, 06:10 PM",
+            "end_time": "Yesterday, 06:45 PM",
+            "duration_text": "~ 35 min",
+            "alarm_triggered": True,
+            "created_at": "Yesterday, 6:45 PM",
+        },
+        {
+            "id": "trip-mdu-3",
+            "destination_name": "Madurai",
+            "destination_city": "Tamil Nadu",
+            "destination_latitude": 9.9252,
+            "destination_longitude": 78.1198,
+            "start_latitude": 9.9800,
+            "start_longitude": 78.1500,
+            "alert_distance_km": 3.0,
+            "distance_at_start_km": 8.4,
+            "status": "completed",
+            "start_time": "12 Oct 2025, 02:00 PM",
+            "end_time": "12 Oct 2025, 02:30 PM",
+            "duration_text": "~ 30 min",
+            "alarm_triggered": True,
+            "created_at": "12 Oct 2025, 2:30 PM",
+        },
+        {
+            "id": "trip-try-4",
+            "destination_name": "Tiruchirappalli",
+            "destination_city": "Tamil Nadu",
+            "destination_latitude": 10.7905,
+            "destination_longitude": 78.7047,
+            "start_latitude": 10.8500,
+            "start_longitude": 78.7200,
+            "alert_distance_km": 5.0,
+            "distance_at_start_km": 12.0,
+            "status": "completed",
+            "start_time": "5 Oct 2025, 10:40 AM",
+            "end_time": "5 Oct 2025, 11:20 AM",
+            "duration_text": "~ 40 min",
+            "alarm_triggered": True,
+            "created_at": "5 Oct 2025, 11:20 AM",
+        },
+        {
+            "id": "trip-slm-5",
+            "destination_name": "Salem",
+            "destination_city": "Tamil Nadu",
+            "destination_latitude": 11.6643,
+            "destination_longitude": 78.1460,
+            "start_latitude": 11.7000,
+            "start_longitude": 78.1800,
+            "alert_distance_km": 2.0,
+            "distance_at_start_km": 6.2,
+            "status": "completed",
+            "start_time": "2 Oct 2025, 04:45 PM",
+            "end_time": "2 Oct 2025, 05:10 PM",
+            "duration_text": "~ 25 min",
+            "alarm_triggered": True,
+            "created_at": "2 Oct 2025, 5:10 PM",
+        },
+    ]
+
+
+def _read_trips():
+    if not os.path.exists(DATA_FILE):
+        seeds = _get_seed_trips()
+        _write_trips(seeds)
+        return seeds
+    try:
+        with open(DATA_FILE, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return _get_seed_trips()
+
+
+def _write_trips(trips_list):
+    try:
+        with open(DATA_FILE, "w", encoding="utf-8") as f:
+            json.dump(trips_list, f, indent=2)
+    except Exception as exc:
+        logging.error("Failed to write trips to disk: %s", exc)
+
+
+@app.get("/trips")
+@app.get("/api/trips")
+def get_trips():
+    """Retrieve all saved past trips."""
+    return _read_trips()
+
+
+@app.get("/trips/{trip_id}")
+@app.get("/api/trips/{trip_id}")
+def get_trip(trip_id: str):
+    """Retrieve a single trip by ID."""
+    trips = _read_trips()
+    for t in trips:
+        if t.get("id") == trip_id:
+            return t
+    raise HTTPException(status_code=404, detail="Trip not found")
+
+
+@app.post("/trips")
+@app.post("/api/trips")
+def create_trip(trip: TripItem):
+    """Save a new trip or summary."""
+    trips = _read_trips()
+    trip_dict = trip.model_dump()
+    if not trip_dict.get("id"):
+        trip_dict["id"] = f"trip-{uuid.uuid4().hex[:8]}"
+    if not trip_dict.get("created_at"):
+        trip_dict["created_at"] = time.strftime("%d %b %Y, %I:%M %p")
+    # Prepend newest trip to list
+    trips.insert(0, trip_dict)
+    _write_trips(trips)
+    return trip_dict
+
+
+@app.delete("/trips/{trip_id}")
+@app.delete("/api/trips/{trip_id}")
+def delete_trip(trip_id: str):
+    """Delete a trip by ID."""
+    trips = _read_trips()
+    new_trips = [t for t in trips if t.get("id") != trip_id]
+    if len(new_trips) == len(trips):
+        raise HTTPException(status_code=404, detail="Trip not found")
+    _write_trips(new_trips)
+    return {"message": "Trip deleted", "id": trip_id}
+
+
+# -----------------------------------------------------------------------------
+# 8. Place Search & Geocoding (Google Maps-like multi-source search)
+# -----------------------------------------------------------------------------
+from destinations_data import search_curated_places, normalize_query
+
+_GEOCODE_CACHE = {}
+_GEOCODE_CACHE_TTL = 300.0  # 5 minutes
+
+
+class PlaceSearchResult(BaseModel):
+    name: str = Field(..., description="Place or landmark name")
+    city: str = Field(default="", description="City, locality, and state description")
+    lat: float = Field(..., description="Latitude coordinate")
+    lng: float = Field(..., description="Longitude coordinate")
+    country: Optional[str] = Field(default="India", description="Country name")
+    source: str = Field(default="geocoder", description="Source provider")
+    type: Optional[str] = Field(default="landmark", description="Place category: city, bus_stand, station, etc.")
+    district: Optional[str] = Field(default=None, description="Parent district or area")
+    is_related: bool = Field(default=False, description="Whether place is related to destination")
+
+
+@app.get("/search-places", response_model=list[PlaceSearchResult])
+def search_places(
+    q: str,
+    lat: Optional[float] = None,
+    lng: Optional[float] = None,
+    limit: int = 12,
+):
+    """
+    Search places, bus stands, railway stations, colleges, and landmarks
+    with instant 0ms curated results, typo normalization (e.g. kallakuruchi -> kallakurichi),
+    Google Maps-like related places expansion, and fast parallel online search.
+    """
+    trimmed = q.strip()
+    if len(trimmed) < 2:
+        return []
+
+    cache_key = (trimmed.lower(), round(lat or 0.0, 2), round(lng or 0.0, 2), limit)
+    now = time.time()
+    if cache_key in _GEOCODE_CACHE:
+        cached_time, cached_res = _GEOCODE_CACHE[cache_key]
+        if now - cached_time < _GEOCODE_CACHE_TTL:
+            return cached_res
+
+    results = []
+    seen_coords = []
+
+    def is_unique(dest_lat: float, dest_lng: float, dest_name: str = "") -> bool:
+        for s_lat, s_lng, s_name in seen_coords:
+            # If same name or coordinates closer than 50 meters
+            if dest_name and s_name and dest_name.lower().strip() == s_name.lower().strip():
+                return False
+            if abs(dest_lat - s_lat) < 0.0006 and abs(dest_lng - s_lng) < 0.0006:
+                return False
+        return True
+
+    # 1. Instant Curated Places (0ms response, handles typos and related places like Google Maps)
+    curated_matches = search_curated_places(trimmed, limit=limit)
+    if curated_matches:
+        for item in curated_matches:
+            d_lat = float(item["lat"])
+            d_lng = float(item["lng"])
+            d_name = item["name"]
+            if is_unique(d_lat, d_lng, d_name):
+                seen_coords.append((d_lat, d_lng, d_name))
+                results.append(
+                    PlaceSearchResult(
+                        name=d_name,
+                        city=item.get("city", "Tamil Nadu"),
+                        lat=d_lat,
+                        lng=d_lng,
+                        country="India",
+                        source="curated",
+                        type=item.get("type", "landmark"),
+                        district=item.get("district"),
+                        is_related=item.get("is_related", False),
+                    )
+                )
+
+    # If curated places provide matches, return immediately (0.001s instant latency!)
+    if len(results) >= 3:
+        _GEOCODE_CACHE[cache_key] = (now, results[:limit])
+        return results[:limit]
+
+    # 2. Fast Parallel Online Geocoding (Nominatim queries in parallel with 2.0s timeout)
+    norm_query = normalize_query(trimmed)
+    search_queries = [norm_query]
+    if "bus" not in norm_query.lower() and "station" not in norm_query.lower():
+        search_queries.append(f"{norm_query} bus stand")
+
+    def fetch_nominatim(query_str: str):
+        try:
+            nom_url = (
+                f"https://nominatim.openstreetmap.org/search?q={urllib.parse.quote(query_str)}"
+                f"&format=json&addressdetails=1&countrycodes=in&limit=6"
+            )
+            req = urllib.request.Request(
+                nom_url,
+                headers={"User-Agent": "TravelAlarmApp/2.0 (FastAPI GPS Engine)"},
+            )
+            with urllib.request.urlopen(req, timeout=2.0) as resp:
+                if resp.status == 200:
+                    data = json.loads(resp.read().decode("utf-8"))
+                    return data if isinstance(data, list) else []
+        except Exception:
+            return []
+        return []
+
+    try:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
+            future_to_query = {executor.submit(fetch_nominatim, sq): sq for sq in search_queries}
+            for future in concurrent.futures.as_completed(future_to_query, timeout=2.2):
+                data = future.result()
+                for item in data:
+                    try:
+                        d_lat = float(item["lat"])
+                        d_lng = float(item["lon"])
+                        if is_unique(d_lat, d_lng):
+                            seen_coords.append((d_lat, d_lng))
+                            parts = item.get("display_name", "").split(",")
+                            short_name = parts[0].strip() if parts else trimmed
+                            city_str = ", ".join([p.strip() for p in parts[1:4]]) if len(parts) > 1 else "India"
+                            
+                            p_type = item.get("type", "")
+                            classified_type = "landmark"
+                            if "bus" in p_type or "bus" in short_name.lower():
+                                classified_type = "bus_stand"
+                            elif "station" in p_type or "station" in short_name.lower() or "railway" in short_name.lower():
+                                classified_type = "station"
+                            elif p_type in ["city", "town", "administrative", "village"]:
+                                classified_type = "city"
+
+                            results.append(
+                                PlaceSearchResult(
+                                    name=short_name,
+                                    city=city_str,
+                                    lat=d_lat,
+                                    lng=d_lng,
+                                    country="India",
+                                    source="nominatim",
+                                    type=classified_type,
+                                    is_related=False,
+                                )
+                            )
+                    except (KeyError, ValueError):
+                        continue
+    except Exception as exc:
+        logging.debug("Parallel Nominatim search completed: %s", exc)
+
+    _GEOCODE_CACHE[cache_key] = (now, results[:limit])
+    return results[:limit]
+
+
+@app.get("/api/health")
+def api_health():
+    """Alias for /health check."""
+    return {"status": "healthy"}
+
+
 if __name__ == "__main__":
     import uvicorn
 
     uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
+
 

@@ -33,10 +33,11 @@ export default function InteractiveMapPicker({
     );
     mapInstanceRef.current = map;
 
-    // Add OpenStreetMap tile layer
-    window.L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      maxZoom: 19,
-      attribution: '© OpenStreetMap contributors',
+    // Add Google Maps tile layer
+    window.L.tileLayer('https://{s}.google.com/vt/lyrs=m&x={x}&y={y}&z={z}', {
+      maxZoom: 20,
+      subdomains: ['mt0', 'mt1', 'mt2', 'mt3'],
+      attribution: '© Google Maps',
     }).addTo(map);
 
     // Custom marker icon

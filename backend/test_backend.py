@@ -186,3 +186,68 @@ def test_cors_production_web():
     )
     assert response.headers.get("access-control-allow-origin") == "https://wakeup-ashy.vercel.app"
 
+
+def test_get_trips():
+    """Verify GET /trips returns list containing seed trips."""
+    response = client.get("/trips")
+    assert response.status_code == 200
+    trips = response.json()
+    assert isinstance(trips, list)
+    assert len(trips) >= 5
+    names = [t["destination_name"] for t in trips]
+    assert "Coimbatore" in names
+    assert "Chennai" in names
+
+
+def test_create_and_delete_trip():
+    """Verify POST /trips creates a trip and DELETE /trips/{id} removes it."""
+    payload = {
+        "destination_name": "Bengaluru Electronic City",
+        "destination_city": "Karnataka",
+        "destination_latitude": 12.8452,
+        "destination_longitude": 77.6602,
+        "alert_distance_km": 3.0,
+        "distance_at_start_km": 15.0,
+        "status": "completed",
+    }
+    create_res = client.post("/trips", json=payload)
+    assert create_res.status_code == 200
+    created = create_res.json()
+    assert created["destination_name"] == "Bengaluru Electronic City"
+    trip_id = created["id"]
+
+    # Verify retrieval
+    get_res = client.get(f"/trips/{trip_id}")
+    assert get_res.status_code == 200
+    assert get_res.json()["id"] == trip_id
+
+    # Verify deletion
+    del_res = client.delete(f"/trips/{trip_id}")
+    assert del_res.status_code == 200
+    assert del_res.json()["message"] == "Trip deleted"
+
+    # Verify 404 after deletion
+    del_again = client.delete(f"/trips/{trip_id}")
+    assert del_again.status_code == 404
+
+
+def test_search_places_short_query():
+    """Verify GET /search-places returns empty list for 1-char query."""
+    response = client.get("/search-places?q=a")
+    assert response.status_code == 200
+    assert response.json() == []
+
+
+def test_search_places_query():
+    """Verify GET /search-places returns places with lat and lng."""
+    response = client.get("/search-places?q=Coimbatore&limit=3")
+    assert response.status_code == 200
+    places = response.json()
+    assert isinstance(places, list)
+    if places:
+        assert "lat" in places[0]
+        assert "lng" in places[0]
+        assert "name" in places[0]
+
+
+

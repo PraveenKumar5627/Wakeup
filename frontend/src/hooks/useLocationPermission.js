@@ -214,12 +214,139 @@ export function useLocationPermission() {
     }
   }, [isNative, isSecureContextAvailable]);
 
+/**
+ * Fast-acquisition geolocation strategy:
+ * 1. Races an instant cached/network fix (enableHighAccuracy: false, maximumAge: 300,000ms, timeout: 2000ms)
+ *    against a precise GPS fix (enableHighAccuracy: true, maximumAge: 30,000ms, timeout: 5000ms).
+ * 2. Whichever arrives first (cached/cellular/WiFi in <250ms) resolves IMMEDIATELY!
+ * 3. High-accuracy continuous watching in the background refines to GPS satellite accuracy.
+ */
+function fetchFastPosition(isNative) {
+  if (isNative) {
+    return new Promise((resolve, reject) => {
+      let settled = false;
+      const onDone = (pos) => {
+        if (!settled && pos?.coords) {
+          settled = true;
+          resolve(pos);
+        }
+      };
+
+      // Fast cached/network fix
+      Geolocation.getCurrentPosition({
+        enableHighAccuracy: false,
+        timeout: 2500,
+        maximumAge: 300000,
+      })
+        .then(onDone)
+        .catch(() => {});
+
+      // High accuracy GPS fix
+      Geolocation.getCurrentPosition({
+        enableHighAccuracy: true,
+        timeout: 5000,
+        maximumAge: 30000,
+      })
+        .then(onDone)
+        .catch((err) => {
+          if (!settled) {
+            settled = true;
+            reject(err);
+          }
+        });
+    });
+  }
+
+async function fetchIpLocationFallback() {
+  try {
+    const res = await fetch('https://ipwho.is/');
+    if (res.ok) {
+      const data = await res.json();
+      if (data && data.success && data.latitude && data.longitude) {
+        return {
+          coords: {
+            latitude: Number(data.latitude),
+            longitude: Number(data.longitude),
+            accuracy: 1000,
+          },
+        };
+      }
+    }
+  } catch (e) {
+    // Ignore fallback network error
+  }
+  return null;
+}
+
+  // Web Browser
+  return new Promise((resolve, reject) => {
+    if (!navigator?.geolocation) {
+      fetchIpLocationFallback().then((ipPos) => {
+        if (ipPos) resolve(ipPos);
+        else reject(new Error('Geolocation is not supported by this browser.'));
+      }).catch(() => reject(new Error('Geolocation is not supported by this browser.')));
+      return;
+    }
+
+    let settled = false;
+    let pendingError = null;
+
+    const onDone = (pos) => {
+      if (!settled && pos?.coords) {
+        settled = true;
+        resolve(pos);
+      }
+    };
+
+    const onError = (err) => {
+      // If user explicitly denied permission (code 1), reject immediately!
+      if (err?.code === 1) {
+        settled = true;
+        reject(err);
+        return;
+      }
+      pendingError = err;
+    };
+
+    // 1. Fast probe: cached or network cell/WiFi fix (sub-second response, 2s timeout)
+    navigator.geolocation.getCurrentPosition(onDone, onError, {
+      enableHighAccuracy: false,
+      timeout: 2000,
+      maximumAge: 300000,
+    });
+
+    // 2. Parallel probe: high accuracy GPS (up to 4s)
+    navigator.geolocation.getCurrentPosition(
+      onDone,
+      async (err) => {
+        if (!settled) {
+          settled = true;
+          // Before giving up, attempt rapid IP location fallback so user never gets stuck!
+          try {
+            const ipPos = await fetchIpLocationFallback();
+            if (ipPos) {
+              resolve(ipPos);
+              return;
+            }
+          } catch (_) {}
+          reject(err || pendingError || new Error('Location timeout'));
+        }
+      },
+      {
+        enableHighAccuracy: true,
+        timeout: 4000,
+        maximumAge: 30000,
+      }
+    );
+  });
+}
+
   // ---- get single current position fix ----
 
   const getCurrentLocation = useCallback(async (opts) => {
     const force = opts && opts.force;
 
-    if (isFetchingRef.current) return null;
+    if (isFetchingRef.current) return lastFixCoordsRef.current || null;
 
     const age = Date.now() - lastFixTimestampRef.current;
     if (!force && lastFixCoordsRef.current && age < FIX_STALE_MS) {
@@ -231,23 +358,7 @@ export function useLocationPermission() {
     setLocationError(null);
 
     try {
-      let position;
-
-      if (isNative) {
-        position = await Geolocation.getCurrentPosition({
-          enableHighAccuracy: true,
-          timeout: 15000,
-          maximumAge: 10000,
-        });
-      } else {
-        position = await new Promise((resolve, reject) =>
-          navigator.geolocation.getCurrentPosition(resolve, reject, {
-            enableHighAccuracy: true,
-            timeout: 15000,
-            maximumAge: 10000,
-          })
-        );
-      }
+      const position = await fetchFastPosition(isNative);
 
       const { latitude: lat, longitude: lng } = position.coords;
       const ts = Date.now();
@@ -305,9 +416,12 @@ export function useLocationPermission() {
         // 1. Ensure Android OS Location Accuracy is turned on via Google Play Services resolution dialog
         if (LocationEnabler) {
           try {
-            await LocationEnabler.enableLocation();
+            await Promise.race([
+              LocationEnabler.enableLocation(),
+              new Promise((_, r) => setTimeout(() => r(new Error('timeout')), 2500)),
+            ]);
           } catch (e) {
-            console.warn('[useLocationPermission] LocationEnabler error:', e);
+            console.warn('[useLocationPermission] LocationEnabler notice:', e);
           }
         }
 
@@ -336,60 +450,21 @@ export function useLocationPermission() {
           return null;
         }
       } else {
-        // Web: Calling getCurrentPosition from the user gesture triggers the browser's native dialog
-        return new Promise((resolve) => {
-          if (!navigator?.geolocation) {
-            setLocationPermStatus('unavailable');
-            setLocationFixStatus('unavailable');
-            setLocationError('Geolocation is not supported by this browser.');
-            resolve(null);
-            return;
-          }
+        // Web: Calling fetchFastPosition triggers the browser's native dialog and resolves in sub-seconds!
+        const position = await fetchFastPosition(false);
+        const { latitude: lat, longitude: lng } = position.coords;
+        const ts = Date.now();
 
-          navigator.geolocation.getCurrentPosition(
-            (position) => {
-              const { latitude: lat, longitude: lng } = position.coords;
-              const ts = Date.now();
-              lastFixTimestampRef.current = ts;
-              lastFixCoordsRef.current = { lat, lng };
+        lastFixTimestampRef.current = ts;
+        lastFixCoordsRef.current = { lat, lng };
 
-              setCurrentLocation({ lat, lng });
-              setLastUpdated(new Date(ts).toLocaleTimeString());
-              setLocationPermStatus('granted');
-              setLocationFixStatus('ok');
-              setLocationError(null);
+        setCurrentLocation({ lat, lng });
+        setLastUpdated(new Date(ts).toLocaleTimeString());
+        setLocationPermStatus('granted');
+        setLocationFixStatus('ok');
+        setLocationError(null);
 
-              resolve({ lat, lng });
-            },
-            (error) => {
-              const msg = buildErrorMsg(error, false);
-              const rawMsg = (error?.message || '').toLowerCase();
-
-              if (error?.code === 1 || rawMsg.includes('denied') || rawMsg.includes('permission')) {
-                setLocationPermStatus('denied_permanently');
-                setLocationFixStatus('denied');
-              } else if (
-                error?.code === 2 ||
-                rawMsg.includes('location services are not enabled') ||
-                rawMsg.includes('disabled') ||
-                rawMsg.includes('services') ||
-                rawMsg.includes('provider')
-              ) {
-                setLocationPermStatus('services_off');
-                setLocationFixStatus('services_off');
-              } else if (error?.code === 3 || rawMsg.includes('timeout')) {
-                setLocationPermStatus('timeout');
-                setLocationFixStatus('timeout');
-              } else {
-                setLocationPermStatus('error');
-                setLocationFixStatus('error');
-              }
-              setLocationError(msg);
-              resolve(null);
-            },
-            { enableHighAccuracy: true, timeout: 15000, maximumAge: 10000 }
-          );
-        });
+        return { lat, lng };
       }
     } catch (err) {
       console.warn('[useLocationPermission] requestPermission error:', err);
