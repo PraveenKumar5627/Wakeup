@@ -1664,224 +1664,618 @@
 }
 
 /* --------------------------------------------------------------------------
-   SCREEN 6: Active Trip Tracking
+   SCREEN 6: Active Trip Tracking (Arraivo Theme: Crisp White & Electric Blue)
    -------------------------------------------------------------------------- */
-.screen-active-trip {
-  background-color: var(--ta-navy-dark);
-  color: #FFFFFF;
-  padding-bottom: 0;
-}
-
-.active-top-header-banner {
-  background: linear-gradient(135deg, #0D7A57 0%, #065F46 100%);
-  margin: 6px 14px 10px;
-  border-radius: 18px;
-  padding: 14px 16px;
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  box-shadow: 0 6px 16px rgba(13, 122, 87, 0.35);
-}
-
-.active-banner-pin-circle {
-  width: 40px;
-  height: 40px;
-  border-radius: 50%;
-  background-color: rgba(255, 255, 255, 0.2);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.banner-sub {
-  font-size: 12px;
-  color: rgba(255, 255, 255, 0.85);
-}
-
-.banner-title {
-  font-size: 18px;
-  font-weight: 800;
-  color: #FFFFFF;
-}
-
-.active-map-container {
-  flex: 1;
-  position: relative;
-  min-height: 280px;
-  background-color: #0E1726;
-}
-
-.leaflet-dark-map {
-  width: 100%;
-  height: 100%;
-}
-
-.active-map-recenter-btn {
-  position: absolute;
-  bottom: 16px;
-  right: 16px;
-  width: 44px;
-  height: 44px;
-  border-radius: 50%;
-  background-color: #1E293B;
-  border: 1px solid #334155;
-  color: #FFFFFF;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.5);
-  cursor: pointer;
-  z-index: 20;
-}
-
-/* Bottom tracking card */
-.active-bottom-sheet {
-  background-color: #FFFFFF;
-  border-radius: 26px 26px 0 0;
-  padding: 20px 20px 28px;
+.arraivo-white-blue-screen,
+.arrivo-active-trip-screen {
+  background-color: var(--ta-bg-cream);
   color: var(--ta-navy);
-  box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.25);
+  min-height: 100%;
   display: flex;
   flex-direction: column;
-  gap: 14px;
 }
 
-.sheet-metrics-row {
+.arraivo-light-topbar,
+.arrivo-trip-topbar {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  padding: max(14px, env(safe-area-inset-top, 14px)) 16px 10px;
+  background: transparent;
 }
 
-.sheet-dist-left {
+.arraivo-header-left,
+.arrivo-header-left {
   display: flex;
   align-items: center;
   gap: 12px;
 }
 
-.sheet-dist-info {
+.arraivo-logo-circle,
+.arrivo-emblem-icon {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  overflow: hidden;
+  background: #FFFFFF;
+  border: 1.5px solid #BFDBFE;
+  box-shadow: 0 4px 14px rgba(30, 107, 255, 0.16);
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.arraivo-logo-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.arraivo-brand-text,
+.arrivo-brand-text {
   display: flex;
   flex-direction: column;
 }
 
-.sheet-dist-val {
+.arraivo-app-name,
+.arrivo-app-name {
   font-size: 22px;
   font-weight: 800;
-  color: var(--ta-navy);
-  letter-spacing: -0.5px;
+  color: #0F172A;
+  letter-spacing: -0.4px;
+  line-height: 1.1;
+  margin: 0;
 }
 
-.sheet-dist-label {
-  font-size: 12px;
-  color: var(--ta-text-muted);
+.arraivo-app-motto,
+.arrivo-app-motto {
+  font-size: 11.5px;
+  color: #64748B;
+  font-weight: 500;
+  margin: 2px 0 0 0;
 }
 
-.sheet-dist-road-hint {
-  font-size: 10.5px;
-  font-weight: 600;
-  color: #2563EB;
-  margin-top: 2px;
-}
-
-.sheet-eta-right {
-  text-align: right;
-}
-
-.sheet-eta-label {
-  font-size: 11px;
-  font-weight: 700;
-  color: var(--ta-text-dim);
-  display: block;
-}
-
-.sheet-eta-val {
-  font-size: 17px;
-  font-weight: 700;
-  color: var(--ta-navy);
-}
-
-.sheet-progress-container {
-  width: 100%;
-  height: 6px;
-  background-color: #E2E8F0;
-  border-radius: 3px;
-  overflow: hidden;
-}
-
-.sheet-progress-fill {
-  height: 100%;
-  background-color: var(--ta-blue);
-  border-radius: 3px;
-  transition: width 0.4s ease;
-}
-
-.sheet-alarm-pill {
-  background-color: var(--ta-blue);
-  color: #FFFFFF;
-  border-radius: var(--ta-radius-full);
-  padding: 9px 16px;
-  font-size: 13.5px;
-  font-weight: 700;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.sheet-gps-status-row {
+.arraivo-header-right,
+.arrivo-header-right {
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 11.5px;
-  color: var(--ta-text-muted);
+}
+
+.arraivo-alarm-badge-pill,
+.arrivo-alarm-badge-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: #EFF6FF;
+  border: 1px solid #BFDBFE;
+  color: #1E6BFF;
+  padding: 6px 12px;
+  border-radius: 9999px;
+  font-size: 12px;
+  font-weight: 700;
+  box-shadow: 0 1px 3px rgba(30, 107, 255, 0.08);
+}
+
+.arraivo-top-settings-btn,
+.arrivo-top-settings-btn {
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  background: #FFFFFF;
+  border: 1px solid #E2E8F0;
+  color: #475569;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: 0 2px 6px rgba(15, 23, 42, 0.04);
+}
+
+.arraivo-top-settings-btn:hover,
+.arrivo-top-settings-btn:hover {
+  background: #F1F5F9;
+  color: #1E6BFF;
+  transform: rotate(15deg);
+}
+
+.arraivo-screen-content,
+.arrivo-trip-content {
+  padding: 4px 16px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  flex: 1;
+}
+
+/* Card 1: Destination Card (Clean White & Blue, No Image Thumbnail) */
+.arraivo-dest-card-clean,
+.arrivo-destination-card {
+  background: #FFFFFF;
+  border: 1px solid #E2E8F0;
+  border-radius: 20px;
+  padding: 14px 16px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: 0 4px 18px rgba(15, 23, 42, 0.05);
+}
+
+.arraivo-dest-card-clean:hover,
+.arrivo-destination-card:hover {
+  border-color: #BFDBFE;
+  transform: translateY(-1px);
+  box-shadow: 0 6px 20px rgba(30, 107, 255, 0.1);
+}
+
+.dest-pin-badge {
+  width: 44px;
+  height: 44px;
+  border-radius: 14px;
+  background: #EFF6FF;
+  border: 1px solid #BFDBFE;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.dest-text-column,
+.arrivo-dest-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.dest-title-text {
+  font-size: 18px;
+  font-weight: 800;
+  color: #0F172A;
+  margin: 0;
+  letter-spacing: -0.3px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.dest-location-sub {
+  font-size: 12.5px;
+  color: #64748B;
+  margin: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.dest-chevron-box,
+.arrivo-dest-chevron-box {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #F8F9FA;
+}
+
+/* Card 2: 3-Column Metrics Panel */
+.arraivo-metrics-panel,
+.arrivo-metrics-panel {
+  background: #FFFFFF;
+  border: 1px solid #E2E8F0;
+  border-radius: 20px;
+  padding: 14px 10px;
+  display: flex;
+  align-items: center;
+  box-shadow: 0 4px 18px rgba(15, 23, 42, 0.05);
+}
+
+.metric-column {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 3px;
+}
+
+.metric-icon-circle {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: #EFF6FF;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 3px;
+}
+
+.metric-number-val {
+  font-size: 16px;
+  font-weight: 800;
+  color: #0F172A;
+  letter-spacing: -0.2px;
+}
+
+.metric-caption-label {
+  font-size: 11px;
+  color: #64748B;
+  font-weight: 600;
+}
+
+.metrics-column-separator {
+  width: 1px;
+  height: 38px;
+  background-color: #E2E8F0;
+}
+
+/* Card 3: Status Card with Circular Progress Donut Gauge */
+.arraivo-status-card,
+.arrivo-dashboard-gauge-card {
+  position: relative;
+  background: #FFFFFF;
+  border: 1px solid #E2E8F0;
+  border-radius: 22px;
+  padding: 18px 16px;
+  box-shadow: 0 6px 20px rgba(15, 23, 42, 0.06);
+  overflow: hidden;
+}
+
+.status-card-body,
+.gauge-card-body {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.gauge-donut-wrapper {
+  position: relative;
+  width: 116px;
+  height: 116px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
   justify-content: center;
 }
 
-.gps-live-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background-color: #10B981;
-  animation: pulse-dot 1.4s infinite;
+.gauge-donut-svg {
+  width: 100%;
+  height: 100%;
+  transform: rotate(-90deg);
 }
 
-.sheet-actions-row {
+.gauge-circle-track {
+  fill: none;
+  stroke: #F1F5F9;
+  stroke-width: 9;
+}
+
+.gauge-circle-arc {
+  fill: none;
+  stroke: #1E6BFF;
+  stroke-width: 9;
+  stroke-linecap: round;
+  transition: stroke-dashoffset 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+  filter: drop-shadow(0 2px 6px rgba(30, 107, 255, 0.3));
+}
+
+.gauge-center-content {
+  position: absolute;
+  inset: 0;
   display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  pointer-events: none;
+}
+
+.gauge-center-km {
+  font-size: 17px;
+  font-weight: 800;
+  color: #0F172A;
+  letter-spacing: -0.4px;
+  line-height: 1.1;
+}
+
+.gauge-center-sub {
+  font-size: 11px;
+  color: #64748B;
+  font-weight: 600;
+  text-transform: lowercase;
+  margin-top: 1px;
+}
+
+.gauge-info-column {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.transit-vehicle-badge {
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  background: #EFF6FF;
+  border: 1px solid #BFDBFE;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 2px;
+}
+
+.traveling-to-label {
+  font-size: 11.5px;
+  color: #64748B;
+  font-weight: 500;
+}
+
+.traveling-dest-title {
+  font-size: 18px;
+  font-weight: 800;
+  color: #0F172A;
+  margin: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  letter-spacing: -0.2px;
+}
+
+.status-live-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: #ECFDF5;
+  border: 1px solid #A7F3D0;
+  color: #059669;
+  padding: 4px 10px;
+  border-radius: 9999px;
+  font-size: 11.5px;
+  font-weight: 700;
+  align-self: flex-start;
+  margin-top: 2px;
+}
+
+.live-pulsing-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background-color: #10B981;
+  animation: pulse-dot 1.2s infinite;
+  box-shadow: 0 0 6px #10B981;
+}
+
+.last-update-row {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  color: #94A3B8;
+  margin-top: 2px;
+}
+
+/* Card 4: Inspirational Quote Banner */
+.arraivo-quote-card,
+.arrivo-quote-card {
+  background: #FFFFFF;
+  border: 1px solid #E2E8F0;
+  border-radius: 20px;
+  padding: 14px 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  box-shadow: 0 4px 16px rgba(15, 23, 42, 0.05);
+}
+
+.quote-left-wrap {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: 1;
+}
+
+.quote-mountain-icon {
+  width: 40px;
+  height: 28px;
+  flex-shrink: 0;
+}
+
+.quote-body-text {
+  font-size: 12.5px;
+  color: #475569;
+  font-style: italic;
+  line-height: 1.4;
+  margin: 0;
+}
+
+.quote-badge-right {
+  flex-shrink: 0;
+}
+
+.neon-keep-going-badge {
+  background: #EFF6FF;
+  border: 1.5px solid #1E6BFF;
+  border-radius: 12px;
+  padding: 6px 12px;
+  box-shadow: 0 2px 8px rgba(30, 107, 255, 0.15);
+}
+
+.keep-going-text {
+  font-size: 12px;
+  font-weight: 800;
+  color: #1E6BFF;
+  text-align: center;
+  line-height: 1.1;
+  display: block;
+  font-family: inherit;
+  letter-spacing: 0.3px;
+}
+
+/* Action Buttons */
+.arraivo-action-buttons-group,
+.arrivo-action-buttons-group {
+  display: flex;
+  flex-direction: column;
   gap: 10px;
   margin-top: 4px;
 }
 
-.btn-danger-stop {
-  flex: 1;
-  background-color: #EF4444;
+.btn-arraivo-stop-trip,
+.btn-arrivo-stop-trip {
+  width: 100%;
+  background: #EF4444;
   color: #FFFFFF;
   border: none;
-  border-radius: var(--ta-radius-full);
-  padding: 12px;
-  font-size: 14px;
+  border-radius: 9999px;
+  padding: 14px 20px;
+  font-size: 15px;
+  font-weight: 800;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  cursor: pointer;
+  box-shadow: 0 4px 14px rgba(239, 68, 68, 0.3);
+  transition: all 0.2s ease;
+}
+
+.btn-arraivo-stop-trip:hover,
+.btn-arrivo-stop-trip:hover {
+  background: #DC2626;
+  transform: translateY(-1px);
+  box-shadow: 0 6px 18px rgba(239, 68, 68, 0.4);
+}
+
+.btn-arraivo-snooze,
+.btn-arrivo-snooze {
+  width: 100%;
+  background: #FFFFFF;
+  color: #0F172A;
+  border: 1.5px solid #CBD5E1;
+  border-radius: 9999px;
+  padding: 13px 20px;
+  font-size: 14.5px;
   font-weight: 700;
-  cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
+  gap: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: 0 2px 6px rgba(15, 23, 42, 0.04);
 }
 
-.btn-simulator-toggle {
-  background-color: #F1F5F9;
-  border: 1px solid var(--ta-border);
-  color: var(--ta-navy);
-  border-radius: var(--ta-radius-full);
-  padding: 12px 16px;
-  font-size: 13px;
+.btn-arraivo-snooze:hover,
+.btn-arrivo-snooze:hover {
+  border-color: #1E6BFF;
+  color: #1E6BFF;
+  background: #EFF6FF;
+}
+
+.arraivo-secondary-links-row,
+.arrivo-secondary-links-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-around;
+  padding: 4px 10px 0;
+}
+
+.secondary-link-btn {
+  background: transparent;
+  border: none;
+  color: #64748B;
+  font-size: 12px;
   font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 6px;
   cursor: pointer;
+  padding: 6px 10px;
+  border-radius: 8px;
+  transition: all 0.2s ease;
+}
+
+.secondary-link-btn:hover {
+  color: #1E6BFF;
+  background: #EFF6FF;
+}
+
+/* Expandable Map Modal */
+.arraivo-map-overlay,
+.arrivo-map-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.6);
+  backdrop-filter: blur(4px);
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+}
+
+.arraivo-map-modal,
+.arrivo-map-modal {
+  background: #FFFFFF;
+  border-top-left-radius: 26px;
+  border-top-right-radius: 26px;
+  border: 1px solid #E2E8F0;
+  height: 70%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  box-shadow: 0 -10px 40px rgba(15, 23, 42, 0.2);
+}
+
+.map-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 18px;
+  background: #F8F9FA;
+  border-bottom: 1px solid #E2E8F0;
+}
+
+.map-modal-close-btn {
+  background: #E2E8F0;
+  border: none;
+  color: #475569;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s ease;
 }
 
-.btn-simulator-toggle.sim-active {
-  background-color: #FEF3C7;
-  border-color: #F59E0B;
-  color: #B45309;
+.map-modal-close-btn:hover {
+  background: #CBD5E1;
+  color: #0F172A;
+}
+
+.map-modal-body {
+  flex: 1;
+  width: 100%;
+}
+
+.map-modal-footer {
+  padding: 10px 16px;
+  background: #F8F9FA;
+  text-align: center;
+  border-top: 1px solid #E2E8F0;
 }
 
 /* --------------------------------------------------------------------------

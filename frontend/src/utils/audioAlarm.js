@@ -1,10 +1,3 @@
-/**
- * Audio Alarm Utility using Web Audio API & Custom Audio File Playback
- * Generates an audible alarm sound (two-tone repeating wake-up chime)
- * completely synthesized in the browser without requiring external audio files,
- * AND supports user-selected custom audio songs from their device's file manager.
- */
-
 import { getCustomAudioFile } from './customAudioDB.js';
 
 class AlarmSoundManager {

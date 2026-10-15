@@ -472,6 +472,11 @@ export default function App() {
             isSimulating={isSimulating}
             onToggleSimulate={handleToggleSimulate}
             onStopTrip={handleStopTrip}
+            onOpenSettings={() => {
+              setCurrentScreen('settings');
+              setActiveTab('settings');
+            }}
+            onSnooze={handleSnooze}
           />
         );
 
