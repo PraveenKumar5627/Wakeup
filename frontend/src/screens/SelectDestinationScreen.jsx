@@ -349,15 +349,25 @@ export default function SelectDestinationScreen({
     });
   }, []);
 
-  // Update map pin and camera centered on user entered destination
+  // Update map pin and camera centered on destination point only
   const updateMapForDestination = useCallback(
-    (dest, shouldZoomIntoDest = false) => {
+    (dest, shouldAnimate = true) => {
       if (!mapInstanceRef.current || !dest) return;
       const map = mapInstanceRef.current;
       const destLat = Number(dest.lat);
       const destLng = Number(dest.lng);
 
-      // Update Destination Marker
+      // Ensure any user starting marker or route line is removed so it ONLY pins destination
+      if (markerUserRef.current) {
+        map.removeLayer(markerUserRef.current);
+        markerUserRef.current = null;
+      }
+      if (routePolylineRef.current) {
+        map.removeLayer(routePolylineRef.current);
+        routePolylineRef.current = null;
+      }
+
+      // Update Destination Marker — only pinned on destination point
       if (markerDestRef.current) {
         markerDestRef.current.setLatLng([destLat, destLng]);
         const newIcon = createDestPinIcon(dest.name);
@@ -370,66 +380,14 @@ export default function SelectDestinationScreen({
         }).addTo(map);
       }
 
-      // Update User Marker & Route Polyline if current location is available
-      if (currentLocation && currentLocation.lat && currentLocation.lng) {
-        const userLat = Number(currentLocation.lat);
-        const userLng = Number(currentLocation.lng);
-
-        if (!markerUserRef.current) {
-          const userPuckIcon = window.L.divIcon({
-            className: 'custom-map-puck-user',
-            html: `
-              <div class="user-puck-wrapper">
-                <div class="user-puck-pulse"></div>
-                <div class="user-puck-core"></div>
-              </div>
-            `,
-            iconSize: [28, 28],
-            iconAnchor: [14, 14],
-          });
-          markerUserRef.current = window.L.marker([userLat, userLng], {
-            icon: userPuckIcon,
-          }).addTo(map);
-        } else {
-          markerUserRef.current.setLatLng([userLat, userLng]);
-        }
-
-        if (!routePolylineRef.current) {
-          routePolylineRef.current = window.L.polyline(
-            [
-              [userLat, userLng],
-              [destLat, destLng],
-            ],
-            {
-              color: '#3B82F6',
-              weight: 4,
-              opacity: 0.85,
-              dashArray: '6, 8',
-            }
-          ).addTo(map);
-        } else {
-          routePolylineRef.current.setLatLngs([
-            [userLat, userLng],
-            [destLat, destLng],
-          ]);
-        }
-
-        if (shouldZoomIntoDest) {
-          // Focus and zoom directly onto the pinned destination like Google Maps
-          map.flyTo([destLat, destLng], 15, { duration: 0.8 });
-        } else {
-          const bounds = window.L.latLngBounds([
-            [userLat, userLng],
-            [destLat, destLng],
-          ]);
-          map.fitBounds(bounds, { padding: [45, 45], maxZoom: 15 });
-        }
-      } else {
-        // Smooth camera transition centered on user entered destination only
+      // Smooth camera transition centered directly on destination point only (zoom 15)
+      if (shouldAnimate) {
         map.flyTo([destLat, destLng], 15, { duration: 0.8 });
+      } else {
+        map.setView([destLat, destLng], 15);
       }
     },
-    [createDestPinIcon, currentLocation]
+    [createDestPinIcon]
   );
 
   // Live Geocoding Search: Curated instant matches + Google Maps related places + online geocoding
@@ -735,7 +693,7 @@ export default function SelectDestinationScreen({
     if (mapInstanceRef.current && selectedDestination) {
       mapInstanceRef.current.flyTo(
         [Number(selectedDestination.lat), Number(selectedDestination.lng)],
-        14,
+        15,
         { duration: 0.6 }
       );
     }
@@ -752,7 +710,7 @@ export default function SelectDestinationScreen({
       const map = window.L.map(mapContainerRef.current, {
         zoomControl: false,
         attributionControl: false,
-      }).setView([destLat, destLng], 14);
+      }).setView([destLat, destLng], 15);
       mapInstanceRef.current = map;
 
       // Authentic Google Maps Roadmap tiles
@@ -1116,8 +1074,8 @@ export default function SelectDestinationScreen({
             type="button"
             className="google-ctrl-btn"
             onClick={handleRecenter}
-            title="Center on route / destination"
-            aria-label="Center on route / destination"
+            title="Center on destination"
+            aria-label="Center on destination"
           >
             <LocateFixed size={16} />
           </button>
