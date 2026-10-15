@@ -5,11 +5,13 @@ current GPS location and their destination using the Haversine formula, and
 determines if the user has reached their chosen alert distance threshold.
 """
 
+import concurrent.futures
 import json
 import logging
 import math
 import time
 from typing import Optional, Tuple
+import urllib.parse
 import urllib.request
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -588,8 +590,90 @@ def search_places(
         _GEOCODE_CACHE[cache_key] = (now, results[:limit])
         return results[:limit]
 
-    # 2. Fast Parallel Online Geocoding (Nominatim queries in parallel with 2.0s timeout)
+    # 2. Fast Parallel Online Geocoding via Photon (Fuzzy & Typo-tolerant) and Nominatim
     norm_query = normalize_query(trimmed)
+
+    def fetch_photon(query_str: str):
+        try:
+            p_lat = lat if lat is not None else 11.0168
+            p_lng = lng if lng is not None else 76.9558
+            photon_url = (
+                f"https://photon.komoot.io/api/?q={urllib.parse.quote(query_str)}"
+                f"&limit=10&lang=en&lat={p_lat}&lon={p_lng}&bbox=68.7,8.4,97.25,37.6"
+            )
+            req = urllib.request.Request(
+                photon_url,
+                headers={"User-Agent": "TravelAlarmApp/2.0 (FastAPI GPS Engine)", "Accept": "application/json"},
+            )
+            with urllib.request.urlopen(req, timeout=2.2) as resp:
+                if resp.status == 200:
+                    p_data = json.loads(resp.read().decode("utf-8"))
+                    features = p_data.get("features", [])
+                    p_items = []
+                    for f in features:
+                        props = f.get("properties", {})
+                        coords = f.get("geometry", {}).get("coordinates", [])
+                        if len(coords) >= 2:
+                            f_lat = float(coords[1])
+                            f_lng = float(coords[0])
+                            f_name = props.get("name") or props.get("street") or props.get("city") or query_str
+                            addr_parts = [
+                                props.get("street"),
+                                props.get("locality"),
+                                props.get("district") or props.get("suburb"),
+                                props.get("city") or props.get("town") or props.get("village"),
+                                props.get("state"),
+                            ]
+                            clean_addr = ", ".join([p for p in addr_parts if p])
+                            osm_val = (props.get("osm_value") or props.get("type") or "").lower()
+                            c_type = "landmark"
+                            if "bus" in osm_val or "bus" in f_name.lower():
+                                c_type = "bus_stand"
+                            elif "station" in osm_val or "station" in f_name.lower() or "railway" in f_name.lower():
+                                c_type = "station"
+                            elif osm_val in ["city", "town", "village", "administrative", "suburb", "district"]:
+                                c_type = "city"
+                            elif "college" in osm_val or "college" in f_name.lower():
+                                c_type = "college"
+                            elif "hospital" in osm_val or "hospital" in f_name.lower():
+                                c_type = "hospital"
+                            p_items.append({
+                                "name": f_name,
+                                "city": clean_addr or "Tamil Nadu, India",
+                                "lat": f_lat,
+                                "lng": f_lng,
+                                "type": c_type,
+                            })
+                    return p_items
+        except Exception as exc:
+            logging.debug("Photon geocoding error: %s", exc)
+        return []
+
+    # First attempt fuzzy Photon lookup
+    photon_matches = fetch_photon(trimmed)
+    if not photon_matches and norm_query != trimmed:
+        photon_matches = fetch_photon(norm_query)
+
+    for p in photon_matches:
+        if is_unique(p["lat"], p["lng"], p["name"]):
+            seen_coords.append((p["lat"], p["lng"], p["name"]))
+            results.append(
+                PlaceSearchResult(
+                    name=p["name"],
+                    city=p["city"],
+                    lat=p["lat"],
+                    lng=p["lng"],
+                    country="India",
+                    source="photon",
+                    type=p["type"],
+                    is_related=False,
+                )
+            )
+
+    if len(results) >= 6:
+        _GEOCODE_CACHE[cache_key] = (now, results[:limit])
+        return results[:limit]
+
     search_queries = [norm_query]
     if "bus" not in norm_query.lower() and "station" not in norm_query.lower():
         search_queries.append(f"{norm_query} bus stand")

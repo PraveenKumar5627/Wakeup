@@ -128,6 +128,67 @@ function parseCoordinatesOrUrl(input) {
   return null;
 }
 
+// Google Maps Places Autocomplete Loader
+const GOOGLE_MAPS_API_KEY = (import.meta.env.VITE_GOOGLE_MAPS_API_KEY || '').trim();
+
+let googlePlacesScriptPromise = null;
+function loadGoogleMapsPlaces(apiKey) {
+  if (typeof window === 'undefined') return Promise.reject(new Error('No window'));
+  if (window.google?.maps?.places) return Promise.resolve(window.google);
+  if (googlePlacesScriptPromise) return googlePlacesScriptPromise;
+
+  googlePlacesScriptPromise = new Promise((resolve) => {
+    const existing = document.getElementById('google-maps-places-script');
+    if (existing) {
+      const poll = setInterval(() => {
+        if (window.google?.maps?.places) {
+          clearInterval(poll);
+          resolve(window.google);
+        }
+      }, 100);
+      setTimeout(() => { clearInterval(poll); resolve(null); }, 4000);
+      return;
+    }
+    const script = document.createElement('script');
+    script.id = 'google-maps-places-script';
+    script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=places`;
+    script.async = true;
+    script.defer = true;
+    script.onload = () => {
+      if (window.google?.maps?.places) resolve(window.google);
+      else resolve(null);
+    };
+    script.onerror = () => resolve(null);
+    document.head.appendChild(script);
+  });
+  return googlePlacesScriptPromise;
+}
+
+/** Highlight matching search text inside suggestion name */
+function highlightMatch(text, query) {
+  if (!query || !query.trim() || !text) return text;
+  const words = query.trim().toLowerCase().split(/\s+/).filter(Boolean);
+  let bestIdx = -1;
+  let bestLen = 0;
+  for (const w of words) {
+    const idx = text.toLowerCase().indexOf(w);
+    if (idx !== -1 && (bestIdx === -1 || idx < bestIdx)) {
+      bestIdx = idx;
+      bestLen = w.length;
+    }
+  }
+  if (bestIdx === -1) return text;
+  return (
+    <>
+      {text.slice(0, bestIdx)}
+      <strong style={{ color: '#1d4ed8', fontWeight: 800 }}>
+        {text.slice(bestIdx, bestIdx + bestLen)}
+      </strong>
+      {text.slice(bestIdx + bestLen)}
+    </>
+  );
+}
+
 export default function SelectDestinationScreen({
   initialDestination = null,
   initialAlertDistanceKm = 5,
@@ -233,6 +294,29 @@ export default function SelectDestinationScreen({
   const searchInputWrapperRef = useRef(null);
   const activeSearchAbortRef = useRef(null);
   const currentSearchQueryRef = useRef('');
+
+  // Google Places API Service refs
+  const autocompleteServiceRef = useRef(null);
+  const placesServiceRef = useRef(null);
+  const [isGoogleMapsReady, setIsGoogleMapsReady] = useState(false);
+
+  useEffect(() => {
+    if (window.google?.maps?.places) {
+      autocompleteServiceRef.current = new window.google.maps.places.AutocompleteService();
+      placesServiceRef.current = new window.google.maps.places.PlacesService(document.createElement('div'));
+      setIsGoogleMapsReady(true);
+    } else if (GOOGLE_MAPS_API_KEY) {
+      loadGoogleMapsPlaces(GOOGLE_MAPS_API_KEY)
+        .then((g) => {
+          if (g?.maps?.places) {
+            autocompleteServiceRef.current = new g.maps.places.AutocompleteService();
+            placesServiceRef.current = new g.maps.places.PlacesService(document.createElement('div'));
+            setIsGoogleMapsReady(true);
+          }
+        })
+        .catch(() => {});
+    }
+  }, []);
 
   // Map state & refs
   const [mapType, setMapType] = useState('roadmap'); // 'roadmap' | 'hybrid'
@@ -379,10 +463,10 @@ export default function SelectDestinationScreen({
 
       // 2. Instant curated matches with Google Maps related places & typo tolerance (0ms response)
       const localMatches = searchDestinationsLocally(trimmed, currentLocation);
-
-      // Always update suggestions immediately (never leave old stale suggestions!)
-      setSuggestions(localMatches);
-      setShowSuggestions(localMatches.length > 0);
+      if (localMatches.length > 0) {
+        setSuggestions(localMatches);
+      }
+      setShowSuggestions(true);
 
       // 3. Cancel any previous in-flight geocode requests to prevent stale results
       if (activeSearchAbortRef.current) {
@@ -390,13 +474,46 @@ export default function SelectDestinationScreen({
       }
       const abortCtrl = new AbortController();
       activeSearchAbortRef.current = abortCtrl;
-
-      // Only show spinner if local results are few (< 4 items)
-      if (localMatches.length < 4) {
-        setIsSearchingOnline(true);
-      }
+      setIsSearchingOnline(true);
 
       try {
+        // Query Google Maps Places Autocomplete if available
+        let googlePredictions = [];
+        if (autocompleteServiceRef.current && window.google?.maps) {
+          try {
+            const biasLat = currentLocation?.lat || 11.0168;
+            const biasLng = currentLocation?.lng || 76.9558;
+            const req = {
+              input: trimmed,
+              componentRestrictions: { country: 'in' },
+            };
+            if (biasLat && biasLng) {
+              req.locationBias = new window.google.maps.LatLng(biasLat, biasLng);
+              req.radius = 50000;
+            }
+            googlePredictions = await new Promise((resolve) => {
+              autocompleteServiceRef.current.getPlacePredictions(req, (preds, status) => {
+                if (status === window.google.maps.places.PlacesServiceStatus.OK && preds) {
+                  resolve(
+                    preds.map((p) => ({
+                      placeId: p.place_id,
+                      name: p.structured_formatting?.main_text || p.description.split(',')[0],
+                      city: p.structured_formatting?.secondary_text || p.description,
+                      source: 'google_maps',
+                      type: 'landmark',
+                      isGoogle: true,
+                    }))
+                  );
+                } else {
+                  resolve([]);
+                }
+              });
+            });
+          } catch (gErr) {
+            console.warn('Google Places prediction notice:', gErr);
+          }
+        }
+
         const onlineResults = await searchPlacesOnline(
           trimmed,
           currentLocation?.lat,
@@ -407,20 +524,27 @@ export default function SelectDestinationScreen({
         // Ensure this is still the active search query
         if (currentSearchQueryRef.current === trimmed) {
           const combined = [...localMatches];
+
+          for (const gItem of googlePredictions) {
+            const isDup = combined.some(
+              (c) => c.name.toLowerCase().trim() === gItem.name.toLowerCase().trim()
+            );
+            if (!isDup) combined.push(gItem);
+          }
+
           for (const item of onlineResults) {
             const isDup = combined.some(
               (c) =>
                 c.name.toLowerCase().trim() === item.name.toLowerCase().trim() ||
-                (Math.abs(c.lat - item.lat) < 0.0006 &&
+                (c.lat && c.lng && item.lat && item.lng &&
+                  Math.abs(c.lat - item.lat) < 0.0006 &&
                   Math.abs(c.lng - item.lng) < 0.0006)
             );
             if (!isDup) combined.push(item);
           }
 
           setSuggestions(combined);
-          if (combined.length > 0) {
-            setShowSuggestions(true);
-          }
+          setShowSuggestions(true);
         }
       } catch (err) {
         if (err.name !== 'AbortError') {
@@ -435,7 +559,7 @@ export default function SelectDestinationScreen({
     [currentLocation]
   );
 
-  // Handle typing with 0ms instant local response + 220ms background online debounce
+  // Handle typing with 0ms instant local response + 160ms background online debounce
   const handleSearchChange = (e) => {
     const val = e.target.value;
     setSearchQuery(val);
@@ -448,28 +572,63 @@ export default function SelectDestinationScreen({
       return;
     }
 
-    // 0ms instant response as user types!
-    if (val.trim().length >= 2) {
-      const instantLocal = searchDestinationsLocally(val.trim(), currentLocation);
+    const trimmed = val.trim();
+    if (trimmed.length >= 2) {
+      setShowSuggestions(true);
+      const instantLocal = searchDestinationsLocally(trimmed, currentLocation);
       if (instantLocal.length > 0) {
         setSuggestions(instantLocal);
-        setShowSuggestions(true);
+      }
+      if (instantLocal.length < 4) {
+        setIsSearchingOnline(true);
       }
     }
 
     debounceTimerRef.current = setTimeout(() => {
       performGeocoding(val);
-    }, 220);
+    }, 160);
   };
 
   // Select place from suggestions and immediately pin to map like Google Maps
-  const handleSelectSuggestion = (dest) => {
-    setSelectedDestination(dest);
-    setSearchQuery(dest.name);
-    setShowSuggestions(false);
-    setIsConfirmed(true);
-    updateMapForDestination(dest, true);
-  };
+  const handleSelectSuggestion = useCallback(
+    (dest) => {
+      if (!dest) return;
+
+      if (dest.isGoogle && dest.placeId && placesServiceRef.current && window.google?.maps) {
+        placesServiceRef.current.getDetails(
+          { placeId: dest.placeId, fields: ['name', 'geometry', 'formatted_address'] },
+          (place, status) => {
+            if (
+              status === window.google.maps.places.PlacesServiceStatus.OK &&
+              place?.geometry?.location
+            ) {
+              const resolved = {
+                name: place.name || dest.name,
+                city: place.formatted_address || dest.city,
+                lat: place.geometry.location.lat(),
+                lng: place.geometry.location.lng(),
+                type: dest.type || 'landmark',
+                source: 'google_maps',
+              };
+              setSelectedDestination(resolved);
+              setSearchQuery(resolved.name);
+              setShowSuggestions(false);
+              setIsConfirmed(true);
+              updateMapForDestination(resolved, true);
+            }
+          }
+        );
+        return;
+      }
+
+      setSelectedDestination(dest);
+      setSearchQuery(dest.name);
+      setShowSuggestions(false);
+      setIsConfirmed(true);
+      updateMapForDestination(dest, true);
+    },
+    [updateMapForDestination]
+  );
 
   // Immediate search and pin execution (triggered by Enter key or Search icon click)
   const executeImmediateSearch = useCallback(
@@ -755,7 +914,12 @@ export default function SelectDestinationScreen({
             onChange={handleSearchChange}
             onKeyDown={handleSearchKeyDown}
             onFocus={() => {
-              if (suggestions.length > 0) setShowSuggestions(true);
+              if (suggestions.length > 0) {
+                setShowSuggestions(true);
+              } else if (searchQuery.trim().length >= 2) {
+                setShowSuggestions(true);
+                performGeocoding(searchQuery.trim());
+              }
             }}
             autoComplete="off"
           />
@@ -811,7 +975,14 @@ export default function SelectDestinationScreen({
                     </div>
                     <div className="dest-suggestion-info">
                       <div className="dest-suggestion-title-row">
-                        <span className="dest-suggestion-name">{item.name}</span>
+                        <span className="dest-suggestion-name">
+                          {highlightMatch(item.name, searchQuery)}
+                        </span>
+                        {item.isGoogle && (
+                          <span className="google-source-badge">
+                            Google
+                          </span>
+                        )}
                         {item.type && (
                           <span className="dest-type-badge">
                             {formatPlaceType(item.type)}
@@ -835,20 +1006,20 @@ export default function SelectDestinationScreen({
             {isSearchingOnline && suggestions.length > 0 && (
               <div className="dest-suggestion-loading-more">
                 <Loader2 size={12} className="animate-spin text-blue-500 shrink-0" />
-                <span>Checking more places online...</span>
+                <span>Searching Google Maps & online places...</span>
               </div>
             )}
 
             {isSearchingOnline && suggestions.length === 0 && (
               <div className="dest-suggestion-loading-row">
-                <Loader2 size={14} className="animate-spin text-blue-600 shrink-0" />
-                <span>Searching exact place like Google Maps...</span>
+                <Loader2 size={15} className="animate-spin text-blue-600 shrink-0" />
+                <span>Searching Google Maps & places for "{searchQuery}"...</span>
               </div>
             )}
 
             {!isSearchingOnline && suggestions.length === 0 && searchQuery.trim().length >= 2 && (
-              <div className="dest-suggestion-loading-row text-xs text-slate-500">
-                <span>No exact places found. Try checking spelling or nearby district.</span>
+              <div className="dest-suggestion-loading-row" style={{ color: '#64748B', fontWeight: 500 }}>
+                <span>No places found for "{searchQuery}". Check spelling or nearby area.</span>
               </div>
             )}
           </div>

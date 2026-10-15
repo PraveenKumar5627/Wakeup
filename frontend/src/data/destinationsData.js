@@ -78,6 +78,28 @@ export const TYPO_MAP = {
   cuddalore: 'cuddalore',
   thanjavur: 'thanjavur',
   tanjore: 'thanjavur',
+  kavundaplayam: 'kavundampalayam',
+  kaundampalayam: 'kavundampalayam',
+  goundampalayam: 'kavundampalayam',
+  kavundampalayam: 'kavundampalayam',
+  thudiyalur: 'thudiyalur',
+  tudiyalur: 'thudiyalur',
+  saravanampatti: 'saravanampatti',
+  saravanampatty: 'saravanampatti',
+  peelamedu: 'peelamedu',
+  pilamedu: 'peelamedu',
+  vadavalli: 'vadavalli',
+  rspuram: 'rs puram',
+  'r.s. puram': 'rs puram',
+  saibaba: 'saibaba colony',
+  'saibaba colony': 'saibaba colony',
+  ganapathy: 'ganapathy',
+  maruthamalai: 'marudhamalai',
+  marudhamalai: 'marudhamalai',
+  perur: 'perur',
+  kuniyamuthur: 'kuniyamuthur',
+  kalapatti: 'kalapatti',
+  ondipudur: 'ondipudur',
 };
 
 export const ALL_DESTINATIONS = [
@@ -236,6 +258,114 @@ export const ALL_DESTINATIONS = [
     type: 'city',
     district: 'Coimbatore',
     keywords: ['coimbatore', 'kovai', 'cbe'],
+  },
+  {
+    name: 'Kavundampalayam Bus Stop',
+    city: 'Coimbatore-Mettupalayam Road, Kavundampalayam, Coimbatore',
+    lat: 11.045219,
+    lng: 76.94728,
+    type: 'bus_stand',
+    district: 'Coimbatore',
+    keywords: ['kavundampalayam', 'kavundaplayam', 'kaundampalayam', 'goundampalayam', 'mettupalayam road', 'bus stop', 'coimbatore'],
+  },
+  {
+    name: 'Kavundampalayam Flyover & Junction',
+    city: 'Mettupalayam - Coimbatore Road, Kavundampalayam, Coimbatore North',
+    lat: 11.043884,
+    lng: 76.94793,
+    type: 'landmark',
+    district: 'Coimbatore',
+    keywords: ['kavundampalayam', 'kavundaplayam', 'flyover', 'junction', 'mettupalayam road', 'coimbatore north'],
+  },
+  {
+    name: 'Kavundampalayam',
+    city: 'Ward 44, North Zone, Coimbatore, Tamil Nadu',
+    lat: 11.0452,
+    lng: 76.9474,
+    type: 'city',
+    district: 'Coimbatore',
+    keywords: ['kavundampalayam', 'kavundaplayam', 'kaundampalayam', 'coimbatore north'],
+  },
+  {
+    name: 'Thudiyalur Bus Stand',
+    city: 'Mettupalayam Road, Thudiyalur, Coimbatore',
+    lat: 11.0822,
+    lng: 76.9389,
+    type: 'bus_stand',
+    district: 'Coimbatore',
+    keywords: ['thudiyalur', 'tudiyalur', 'bus stand', 'mettupalayam road', 'coimbatore'],
+  },
+  {
+    name: 'RS Puram (R.S. Puram)',
+    city: 'DB Road, RS Puram, Coimbatore',
+    lat: 11.0094,
+    lng: 76.9514,
+    type: 'landmark',
+    district: 'Coimbatore',
+    keywords: ['rs puram', 'r.s. puram', 'db road', 'coimbatore'],
+  },
+  {
+    name: 'Saibaba Colony',
+    city: 'NSR Road, Saibaba Colony, Coimbatore',
+    lat: 11.0289,
+    lng: 76.9442,
+    type: 'landmark',
+    district: 'Coimbatore',
+    keywords: ['saibaba colony', 'nsr road', 'coimbatore'],
+  },
+  {
+    name: 'Vadavalli Bus Terminus',
+    city: 'Marudhamalai Main Road, Vadavalli, Coimbatore',
+    lat: 11.0284,
+    lng: 76.9048,
+    type: 'bus_stand',
+    district: 'Coimbatore',
+    keywords: ['vadavalli', 'bus terminus', 'marudhamalai road', 'coimbatore'],
+  },
+  {
+    name: 'Saravanampatti Junction',
+    city: 'Sathy Road, Saravanampatti, Coimbatore',
+    lat: 11.0772,
+    lng: 76.9958,
+    type: 'landmark',
+    district: 'Coimbatore',
+    keywords: ['saravanampatti', 'saravanampatty', 'sathy road', 'coimbatore'],
+  },
+  {
+    name: 'Ganapathy Bus Stop',
+    city: 'Sathy Road, Ganapathy, Coimbatore',
+    lat: 11.0367,
+    lng: 76.9782,
+    type: 'bus_stand',
+    district: 'Coimbatore',
+    keywords: ['ganapathy', 'sathy road', 'coimbatore'],
+  },
+  {
+    name: 'Marudhamalai Murugan Temple',
+    city: 'Maruthamalai, Coimbatore, Tamil Nadu',
+    lat: 11.0456,
+    lng: 76.8524,
+    type: 'landmark',
+    district: 'Coimbatore',
+    keywords: ['marudhamalai', 'maruthamalai', 'murugan temple', 'coimbatore'],
+  },
+  {
+    name: 'Sundarapuram Bus Stop',
+    city: 'Pollachi Main Road, Sundarapuram, Coimbatore',
+    lat: 10.9575,
+    lng: 76.9698,
+    type: 'bus_stand',
+    district: 'Coimbatore',
+    keywords: ['sundarapuram', 'pollachi road', 'kurichi', 'coimbatore'],
+  },
+  {
+    name: 'Kuniyamuthur',
+    city: 'Palakkad Main Road, Kuniyamuthur, Coimbatore',
+    lat: 10.9631,
+    lng: 76.9423,
+    type: 'landmark',
+    district: 'Coimbatore',
+    keywords: ['kuniyamuthur', 'palakkad road', 'coimbatore'],
   },
   {
     name: 'Gandhipuram Central Bus Stand',
@@ -1318,7 +1448,9 @@ export function searchDestinationsLocally(query, userLocation = null) {
 
   const raw = query.trim().toLowerCase();
   const normalized = normalizeQuery(raw);
-  const searchTerms = Array.from(new Set([raw, normalized].filter(Boolean)));
+  const rawWords = raw.split(/\s+/).filter((w) => w.length >= 2);
+  const normWords = normalized.split(/\s+/).filter((w) => w.length >= 2);
+  const searchTerms = Array.from(new Set([raw, normalized, ...rawWords, ...normWords].filter(Boolean)));
 
   const matchedItems = [];
   const matchedDistricts = new Set();
@@ -1328,20 +1460,32 @@ export function searchDestinationsLocally(query, userLocation = null) {
     return `${item.name.toLowerCase()}--${item.lat.toFixed(4)},${item.lng.toFixed(4)}`;
   }
 
-  // 1. Direct Matching: Exact and partial matches on name, city, and keywords
+  // 1. Direct Matching: Exact, phrase, and multi-word matches on name, city, and keywords
   for (const item of ALL_DESTINATIONS) {
     const itemName = item.name.toLowerCase();
     const itemCity = item.city.toLowerCase();
     const itemDistrict = (item.district || '').toLowerCase();
     const itemKeywords = (item.keywords || []).map((k) => k.toLowerCase());
 
-    const isDirectMatch = searchTerms.some(
-      (term) =>
-        itemName.includes(term) ||
-        itemCity.includes(term) ||
-        itemDistrict === term ||
-        itemKeywords.some((k) => k === term || k.includes(term))
-    );
+    const allWordsMatch =
+      normWords.length > 1 &&
+      normWords.every(
+        (word) =>
+          itemName.includes(word) ||
+          itemCity.includes(word) ||
+          itemDistrict.includes(word) ||
+          itemKeywords.some((k) => k.includes(word))
+      );
+
+    const isDirectMatch =
+      allWordsMatch ||
+      searchTerms.some(
+        (term) =>
+          itemName.includes(term) ||
+          itemCity.includes(term) ||
+          itemDistrict === term ||
+          itemKeywords.some((k) => k === term || k.includes(term))
+      );
 
     if (isDirectMatch) {
       const k = itemKey(item);
@@ -1351,6 +1495,7 @@ export function searchDestinationsLocally(query, userLocation = null) {
           ...item,
           isDirectMatch: true,
           isRelated: false,
+          _allWordsMatch: allWordsMatch,
         });
         if (item.district) {
           matchedDistricts.add(item.district.toLowerCase());
@@ -1395,8 +1540,8 @@ export function searchDestinationsLocally(query, userLocation = null) {
       else if (keywords.some((k) => k === term)) score = Math.max(score, 80);
       else if (name.includes(term)) score = Math.max(score, 70);
       else if (keywords.some((k) => k.includes(term))) score = Math.max(score, 60);
-      else if (city.includes(term)) score = Math.max(score, 20);
     }
+    if (item._allWordsMatch) score += 60;
     return score;
   }
 

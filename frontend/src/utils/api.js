@@ -471,6 +471,88 @@ export async function searchPlacesOnline(query, userLat = null, userLng = null, 
     return results;
   }
 
+  // 2. High-Accuracy Fuzzy Geocoding via Photon (OSM / Komoot Elasticsearch)
+  // Handles typos (e.g. 'Kavundaplayam' -> 'Kavundampalayam'), bus stops, flyovers, colleges,
+  // with strict India bounding box & live user GPS bias (0-150ms)
+  try {
+    const photonCtrl = new AbortController();
+    const photonTimeout = setTimeout(() => photonCtrl.abort(), 2500);
+    const INDIA_BBOX = '68.7,8.4,97.25,37.6';
+    const photonUrl = `https://photon.komoot.io/api/?q=${encodeURIComponent(
+      trimmed
+    )}&limit=10&lang=en&lat=${biasLat}&lon=${biasLng}&bbox=${INDIA_BBOX}`;
+
+    const pRes = await fetch(photonUrl, { signal: signal || photonCtrl.signal });
+    clearTimeout(photonTimeout);
+
+    if (pRes.ok) {
+      const pData = await pRes.json();
+      const features = pData?.features || [];
+      for (const f of features) {
+        const props = f.properties || {};
+        const coords = f.geometry?.coordinates;
+        if (coords && coords.length >= 2) {
+          const fLat = coords[1];
+          const fLng = coords[0];
+          const fName = props.name || props.street || props.city || trimmed;
+
+          const addrParts = [
+            props.street,
+            props.locality,
+            props.district || props.suburb,
+            props.city || props.town || props.village || props.county,
+            props.state,
+            props.country,
+          ]
+            .filter(Boolean)
+            .filter((v, i, arr) => v !== arr[i - 1]);
+
+          const cityStr = addrParts.slice(0, 4).join(', ') || 'Tamil Nadu, India';
+
+          const osmVal = (props.osm_value || props.type || '').toLowerCase();
+          let classified = 'landmark';
+          if (osmVal.includes('bus') || fName.toLowerCase().includes('bus')) {
+            classified = 'bus_stand';
+          } else if (
+            osmVal.includes('station') ||
+            fName.toLowerCase().includes('station') ||
+            fName.toLowerCase().includes('railway')
+          ) {
+            classified = 'station';
+          } else if (
+            ['city', 'town', 'village', 'administrative', 'suburb', 'district'].includes(osmVal)
+          ) {
+            classified = 'city';
+          } else if (
+            osmVal.includes('college') ||
+            osmVal.includes('university') ||
+            fName.toLowerCase().includes('college')
+          ) {
+            classified = 'college';
+          } else if (osmVal.includes('hospital') || fName.toLowerCase().includes('hospital')) {
+            classified = 'hospital';
+          }
+
+          if (isUnique(fLat, fLng, fName)) {
+            seenCoords.push([fLat, fLng, fName]);
+            results.push({
+              name: fName,
+              city: cityStr,
+              lat: fLat,
+              lng: fLng,
+              source: 'photon',
+              type: classified,
+              isRelated: false,
+            });
+          }
+        }
+      }
+      if (results.length >= 6) return results;
+    }
+  } catch (err) {
+    if (signal?.aborted) throw err;
+  }
+
   // 2. Try Backend API (fast multi-source geocoder)
   try {
     const backendTimeout = new AbortController();

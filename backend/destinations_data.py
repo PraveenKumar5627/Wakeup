@@ -41,9 +41,20 @@ TYPO_MAP = {
     "ulundurpettai": "ulundurpettai",
     "thiyagadurgam": "thiyagadurgam",
     "sankarapuram": "sankarapuram",
-    "tirukoilur": "tirukoilur",
     "parikkal": "parikkal",
     "kumbakonam": "kumbakonam",
+    "kavundaplayam": "kavundampalayam",
+    "kaundampalayam": "kavundampalayam",
+    "goundampalayam": "kavundampalayam",
+    "kavundampalayam": "kavundampalayam",
+    "thudiyalur": "thudiyalur",
+    "tudiyalur": "thudiyalur",
+    "saravanampatti": "saravanampatti",
+    "peelamedu": "peelamedu",
+    "vadavalli": "vadavalli",
+    "rspuram": "rs puram",
+    "saibaba": "saibaba colony",
+    "ganapathy": "ganapathy",
 }
 
 CURATED_PLACES = [
@@ -184,6 +195,60 @@ CURATED_PLACES = [
         "district": "Coimbatore",
         "type": "city",
         "keywords": ["coimbatore", "kovai", "cbe"],
+    },
+    {
+        "name": "Kavundampalayam Bus Stop",
+        "city": "Coimbatore-Mettupalayam Road, Kavundampalayam, Coimbatore",
+        "lat": 11.045219,
+        "lng": 76.94728,
+        "district": "Coimbatore",
+        "type": "bus_stand",
+        "keywords": ["kavundampalayam", "kavundaplayam", "kaundampalayam", "goundampalayam", "bus stop", "coimbatore"],
+    },
+    {
+        "name": "Kavundampalayam Flyover & Junction",
+        "city": "Mettupalayam - Coimbatore Road, Kavundampalayam, Coimbatore North",
+        "lat": 11.043884,
+        "lng": 76.94793,
+        "district": "Coimbatore",
+        "type": "landmark",
+        "keywords": ["kavundampalayam", "kavundaplayam", "flyover", "junction", "coimbatore"],
+    },
+    {
+        "name": "Kavundampalayam",
+        "city": "Ward 44, North Zone, Coimbatore, Tamil Nadu",
+        "lat": 11.0452,
+        "lng": 76.9474,
+        "district": "Coimbatore",
+        "type": "city",
+        "keywords": ["kavundampalayam", "kavundaplayam", "kaundampalayam", "coimbatore north"],
+    },
+    {
+        "name": "Thudiyalur Bus Stand",
+        "city": "Mettupalayam Road, Thudiyalur, Coimbatore",
+        "lat": 11.0822,
+        "lng": 76.9389,
+        "district": "Coimbatore",
+        "type": "bus_stand",
+        "keywords": ["thudiyalur", "tudiyalur", "bus stand", "coimbatore"],
+    },
+    {
+        "name": "RS Puram",
+        "city": "DB Road, RS Puram, Coimbatore",
+        "lat": 11.0094,
+        "lng": 76.9514,
+        "district": "Coimbatore",
+        "type": "landmark",
+        "keywords": ["rs puram", "r.s. puram", "db road", "coimbatore"],
+    },
+    {
+        "name": "Saibaba Colony",
+        "city": "NSR Road, Saibaba Colony, Coimbatore",
+        "lat": 11.0289,
+        "lng": 76.9442,
+        "district": "Coimbatore",
+        "type": "landmark",
+        "keywords": ["saibaba colony", "nsr road", "coimbatore"],
     },
     {
         "name": "Gandhipuram Central Bus Stand",
@@ -441,13 +506,19 @@ CURATED_PLACES = [
 
 def normalize_query(query: str) -> str:
     cleaned = query.strip().lower()
-    return TYPO_MAP.get(cleaned, cleaned)
+    if cleaned in TYPO_MAP:
+        return TYPO_MAP[cleaned]
+    words = cleaned.split()
+    corrected = [TYPO_MAP.get(w, w) for w in words]
+    return " ".join(corrected)
 
 
 def search_curated_places(query: str, limit: int = 12) -> List[Dict[str, Any]]:
     raw = query.strip().lower()
     normalized = normalize_query(raw)
-    terms = list(dict.fromkeys([t for t in [raw, normalized] if t]))
+    raw_words = [w for w in raw.split() if len(w) >= 2]
+    norm_words = [w for w in normalized.split() if len(w) >= 2]
+    terms = list(dict.fromkeys([t for t in [raw, normalized] + raw_words + norm_words if t]))
 
     matched = []
     matched_districts = set()
