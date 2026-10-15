@@ -287,6 +287,42 @@ export const ALL_DESTINATIONS = [
     keywords: ['kavundampalayam', 'kavundaplayam', 'kaundampalayam', 'coimbatore north'],
   },
   {
+    name: 'Kanuvai',
+    city: 'Thadagam Road, Coimbatore, Tamil Nadu',
+    lat: 11.065318,
+    lng: 76.908538,
+    type: 'city',
+    district: 'Coimbatore',
+    keywords: ['kanuvai', 'kanuvai junction', 'thadagam road', 'coimbatore', 'kovai'],
+  },
+  {
+    name: 'Kanuvai Bus Stop',
+    city: 'Thadagam Road, Kanuvai, Coimbatore',
+    lat: 11.0664,
+    lng: 76.8974,
+    type: 'bus_stand',
+    district: 'Coimbatore',
+    keywords: ['kanuvai', 'kanuvai bus stop', 'kanuvai bus stand', 'coimbatore'],
+  },
+  {
+    name: 'Vadavalli Bus Stand',
+    city: 'Marudhamalai Main Road, Vadavalli, Coimbatore',
+    lat: 11.0315,
+    lng: 76.9025,
+    type: 'bus_stand',
+    district: 'Coimbatore',
+    keywords: ['vadavalli', 'bus stand', 'marudhamalai road', 'coimbatore'],
+  },
+  {
+    name: 'Pannimadai',
+    city: 'Pannimadai, Coimbatore, Tamil Nadu',
+    lat: 11.085,
+    lng: 76.895,
+    type: 'landmark',
+    district: 'Coimbatore',
+    keywords: ['pannimadai', 'kanuvai road', 'coimbatore'],
+  },
+  {
     name: 'Thudiyalur Bus Stand',
     city: 'Mettupalayam Road, Thudiyalur, Coimbatore',
     lat: 11.0822,
@@ -1447,10 +1483,29 @@ export function searchDestinationsLocally(query, userLocation = null) {
   }
 
   const raw = query.trim().toLowerCase();
-  const normalized = normalizeQuery(raw);
-  const rawWords = raw.split(/\s+/).filter((w) => w.length >= 2);
+  const cleanCommaStr = raw.replace(/\s*,\s*/g, ', ');
+  const normalized = normalizeQuery(cleanCommaStr);
+
+  const hasComma = cleanCommaStr.includes(',');
+  const commaParts = hasComma
+    ? cleanCommaStr.split(',').map((p) => p.trim()).filter(Boolean)
+    : [];
+
+  const targetPlace = hasComma && commaParts.length > 0 ? commaParts[0] : '';
+  const contextRegion = hasComma && commaParts.length > 1 ? commaParts.slice(1).join(' ') : '';
+  const targetPlaceNorm = targetPlace ? normalizeQuery(targetPlace) : '';
+  const contextRegionNorm = contextRegion ? normalizeQuery(contextRegion) : '';
+
   const normWords = normalized.split(/\s+/).filter((w) => w.length >= 2);
-  const searchTerms = Array.from(new Set([raw, normalized, ...rawWords, ...normWords].filter(Boolean)));
+  const targetWords = targetPlaceNorm
+    ? targetPlaceNorm.split(/\s+/).filter((w) => w.length >= 2)
+    : normWords;
+  const primaryWord = targetWords[0] || normWords[0] || '';
+
+  const rawWords = raw.split(/[\s,]+/).filter((w) => w.length >= 2);
+  const searchTerms = Array.from(
+    new Set([raw, cleanCommaStr, normalized, targetPlace, targetPlaceNorm, ...rawWords, ...normWords].filter(Boolean))
+  );
 
   const matchedItems = [];
   const matchedDistricts = new Set();
@@ -1460,32 +1515,73 @@ export function searchDestinationsLocally(query, userLocation = null) {
     return `${item.name.toLowerCase()}--${item.lat.toFixed(4)},${item.lng.toFixed(4)}`;
   }
 
-  // 1. Direct Matching: Exact, phrase, and multi-word matches on name, city, and keywords
+  // 1. Direct Matching
   for (const item of ALL_DESTINATIONS) {
     const itemName = item.name.toLowerCase();
     const itemCity = item.city.toLowerCase();
     const itemDistrict = (item.district || '').toLowerCase();
     const itemKeywords = (item.keywords || []).map((k) => k.toLowerCase());
 
-    const allWordsMatch =
-      normWords.length > 1 &&
-      normWords.every(
-        (word) =>
-          itemName.includes(word) ||
-          itemCity.includes(word) ||
-          itemDistrict.includes(word) ||
-          itemKeywords.some((k) => k.includes(word))
-      );
+    let isDirectMatch = false;
+    let allWordsMatch = false;
 
-    const isDirectMatch =
-      allWordsMatch ||
-      searchTerms.some(
-        (term) =>
-          itemName.includes(term) ||
-          itemCity.includes(term) ||
-          itemDistrict === term ||
-          itemKeywords.some((k) => k === term || k.includes(term))
-      );
+    if (hasComma) {
+      // WHEN COMMA IS USED (e.g. "kanuvai ,coimbatore"):
+      // The item MUST match targetPlace (e.g. "kanuvai")!
+      // Matching contextRegion alone (e.g. "coimbatore") is NOT a match!
+      const targetMatches =
+        itemName.includes(targetPlace) ||
+        itemName.includes(targetPlaceNorm) ||
+        itemKeywords.some((k) => k.includes(targetPlace) || k.includes(targetPlaceNorm)) ||
+        (targetWords.length > 0 &&
+          targetWords.every((tw) => itemName.includes(tw) || itemKeywords.some((k) => k.includes(tw))));
+
+      if (targetMatches) {
+        isDirectMatch = true;
+        // Check if it also matches contextRegion (e.g. "coimbatore")
+        if (
+          !contextRegion ||
+          itemCity.includes(contextRegion) ||
+          itemDistrict.includes(contextRegion) ||
+          itemDistrict.includes(contextRegionNorm) ||
+          itemKeywords.some((k) => k.includes(contextRegion) || k.includes(contextRegionNorm))
+        ) {
+          allWordsMatch = true;
+        }
+      }
+    } else {
+      // NO COMMA USED
+      allWordsMatch =
+        normWords.length > 1 &&
+        normWords.every(
+          (word) =>
+            itemName.includes(word) ||
+            itemCity.includes(word) ||
+            itemDistrict.includes(word) ||
+            itemKeywords.some((k) => k.includes(word))
+        );
+
+      if (allWordsMatch) {
+        isDirectMatch = true;
+      } else if (normWords.length > 1) {
+        // Multi-word query without comma: must match primary word
+        const primaryMatches =
+          itemName.includes(primaryWord) ||
+          itemKeywords.some((k) => k.includes(primaryWord));
+        if (primaryMatches) {
+          isDirectMatch = true;
+        }
+      } else {
+        // Single word query
+        isDirectMatch = searchTerms.some(
+          (term) =>
+            itemName.includes(term) ||
+            itemCity.includes(term) ||
+            itemDistrict === term ||
+            itemKeywords.some((k) => k === term || k.includes(term))
+        );
+      }
+    }
 
     if (isDirectMatch) {
       const k = itemKey(item);
@@ -1504,23 +1600,24 @@ export function searchDestinationsLocally(query, userLocation = null) {
     }
   }
 
-  // 2. Related Places Expansion (Like Google Maps!):
-  // When a destination/district is searched (e.g., 'kallakurichi' or 'coimbatore'),
-  // gather all related transit places, bus stands, stations, and landmarks in that destination
-  // and list them right below!
+  // 2. Related Places Expansion (Only if searching for the district itself, e.g. "coimbatore", NOT "kanuvai ,coimbatore")
   const relatedItems = [];
-  for (const districtName of matchedDistricts) {
-    for (const item of ALL_DESTINATIONS) {
-      if ((item.district || '').toLowerCase() === districtName) {
-        const k = itemKey(item);
-        if (!addedKeys.has(k)) {
-          addedKeys.add(k);
-          relatedItems.push({
-            ...item,
-            isDirectMatch: false,
-            isRelated: true,
-            relatedTo: districtName,
-          });
+  if (!hasComma && normWords.length === 1) {
+    for (const districtName of matchedDistricts) {
+      if (normWords.some((w) => districtName.includes(w) || w.includes(districtName))) {
+        for (const item of ALL_DESTINATIONS) {
+          if ((item.district || '').toLowerCase() === districtName) {
+            const k = itemKey(item);
+            if (!addedKeys.has(k)) {
+              addedKeys.add(k);
+              relatedItems.push({
+                ...item,
+                isDirectMatch: false,
+                isRelated: true,
+                relatedTo: districtName,
+              });
+            }
+          }
         }
       }
     }
@@ -1533,20 +1630,31 @@ export function searchDestinationsLocally(query, userLocation = null) {
     const keywords = (item.keywords || []).map((k) => k.toLowerCase());
 
     let score = 0;
-    for (const term of searchTerms) {
-      if (name === term) score = Math.max(score, 100);
-      else if (name.startsWith(term)) score = Math.max(score, 90);
-      else if (district === term) score = Math.max(score, 85);
-      else if (keywords.some((k) => k === term)) score = Math.max(score, 80);
-      else if (name.includes(term)) score = Math.max(score, 70);
-      else if (keywords.some((k) => k.includes(term))) score = Math.max(score, 60);
+    if (hasComma) {
+      if (name === targetPlace || name === targetPlaceNorm) score += 100;
+      else if (name.startsWith(targetPlace) || name.startsWith(targetPlaceNorm)) score += 90;
+      else if (name.includes(targetPlace) || name.includes(targetPlaceNorm)) score += 80;
+      else if (keywords.some((k) => k.includes(targetPlace))) score += 70;
+
+      if (contextRegion && (district.includes(contextRegion) || city.includes(contextRegion))) {
+        score += 30;
+      }
+    } else {
+      for (const term of searchTerms) {
+        if (name === term) score = Math.max(score, 100);
+        else if (name.startsWith(term)) score = Math.max(score, 90);
+        else if (district === term) score = Math.max(score, 85);
+        else if (keywords.some((k) => k === term)) score = Math.max(score, 80);
+        else if (name.includes(term)) score = Math.max(score, 70);
+        else if (keywords.some((k) => k.includes(term))) score = Math.max(score, 60);
+      }
     }
+
     if (item._allWordsMatch) score += 60;
     return score;
   }
 
-  // 3. Sort intelligently:
-  // Higher score first (name / district matches) -> primary city/bus stand -> stations -> landmarks
+  // 3. Sort
   const typePriority = {
     city: 1,
     bus_stand: 2,
@@ -1573,6 +1681,5 @@ export function searchDestinationsLocally(query, userLocation = null) {
     return pA - pB;
   });
 
-  // Combine: direct matches first, followed by related places in that destination
   return [...matchedItems, ...relatedItems];
 }

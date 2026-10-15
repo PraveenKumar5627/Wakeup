@@ -488,6 +488,8 @@ export default function SelectDestinationScreen({
       setIsSearchingOnline(true);
 
       try {
+        const cleanQuery = trimmed.replace(/\s*,\s*/g, ', ').replace(/\s+/g, ' ').trim();
+
         // Query Google Maps Places Autocomplete if available
         let googlePredictions = [];
         if (autocompleteServiceRef.current && window.google?.maps) {
@@ -495,7 +497,7 @@ export default function SelectDestinationScreen({
             const biasLat = currentLocation?.lat || 11.0168;
             const biasLng = currentLocation?.lng || 76.9558;
             const req = {
-              input: trimmed,
+              input: cleanQuery,
               componentRestrictions: { country: 'in' },
             };
             if (biasLat && biasLng) {
@@ -526,7 +528,7 @@ export default function SelectDestinationScreen({
         }
 
         const onlineResults = await searchPlacesOnline(
-          trimmed,
+          cleanQuery,
           currentLocation?.lat,
           currentLocation?.lng,
           abortCtrl.signal
@@ -552,6 +554,33 @@ export default function SelectDestinationScreen({
                   Math.abs(c.lng - item.lng) < 0.0006)
             );
             if (!isDup) combined.push(item);
+          }
+
+          // Prioritize places matching the target place before the comma (e.g. 'kanuvai' in 'kanuvai ,coimbatore')
+          const commaTarget = trimmed.includes(',')
+            ? trimmed.split(',')[0].trim().toLowerCase()
+            : '';
+          if (commaTarget) {
+            combined.sort((a, b) => {
+              const aName = a.name.toLowerCase();
+              const bName = b.name.toLowerCase();
+              const aExact = aName === commaTarget;
+              const bExact = bName === commaTarget;
+              if (aExact && !bExact) return -1;
+              if (!aExact && bExact) return 1;
+
+              const aStarts = aName.startsWith(commaTarget);
+              const bStarts = bName.startsWith(commaTarget);
+              if (aStarts && !bStarts) return -1;
+              if (!aStarts && bStarts) return 1;
+
+              const aHas = aName.includes(commaTarget);
+              const bHas = bName.includes(commaTarget);
+              if (aHas && !bHas) return -1;
+              if (!aHas && bHas) return 1;
+
+              return 0;
+            });
           }
 
           setSuggestions(combined);
@@ -590,9 +619,7 @@ export default function SelectDestinationScreen({
       if (instantLocal.length > 0) {
         setSuggestions(instantLocal);
       }
-      if (instantLocal.length < 4) {
-        setIsSearchingOnline(true);
-      }
+      setIsSearchingOnline(true);
     }
 
     debounceTimerRef.current = setTimeout(() => {
@@ -991,16 +1018,6 @@ export default function SelectDestinationScreen({
             {/* Matching Suggestions when typing */}
             {searchQuery.trim() &&
               suggestions.map((item, idx) => {
-                const itemDist =
-                  currentLocation && item.lat && item.lng
-                    ? haversineDistanceKm(
-                        currentLocation.lat,
-                        currentLocation.lng,
-                        item.lat,
-                        item.lng
-                      )
-                    : null;
-
                 const isFirstRelated =
                   item.isRelated && (!suggestions[idx - 1] || !suggestions[idx - 1].isRelated);
 
@@ -1040,11 +1057,6 @@ export default function SelectDestinationScreen({
                           {item.city}
                         </div>
                       </div>
-                      {itemDist !== null && (
-                        <span className="dest-item-distance-pill">
-                          {itemDist < 10 ? itemDist.toFixed(1) : Math.round(itemDist)} km
-                        </span>
-                      )}
                     </div>
                   </React.Fragment>
                 );

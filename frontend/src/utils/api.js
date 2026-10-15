@@ -466,20 +466,23 @@ export async function searchPlacesOnline(query, userLat = null, userLng = null, 
     }
   }
 
-  // If local curated database has rich matching results (e.g. 5+ items), return immediately
-  if (results.length >= 6) {
+  const cleanQuery = trimmed.replace(/\s*,\s*/g, ', ').replace(/\s+/g, ' ').trim();
+  const hasComma = cleanQuery.includes(',');
+
+  // If local curated database has rich matching results AND not a comma search, return immediately
+  if (!hasComma && results.length >= 6) {
     return results;
   }
 
   // 2. High-Accuracy Fuzzy Geocoding via Photon (OSM / Komoot Elasticsearch)
-  // Handles typos (e.g. 'Kavundaplayam' -> 'Kavundampalayam'), bus stops, flyovers, colleges,
+  // Handles typos, bus stops, flyovers, colleges, and comma-separated places (e.g. 'kanuvai ,coimbatore'),
   // with strict India bounding box & live user GPS bias (0-150ms)
   try {
     const photonCtrl = new AbortController();
     const photonTimeout = setTimeout(() => photonCtrl.abort(), 2500);
     const INDIA_BBOX = '68.7,8.4,97.25,37.6';
     const photonUrl = `https://photon.komoot.io/api/?q=${encodeURIComponent(
-      trimmed
+      cleanQuery
     )}&limit=10&lang=en&lat=${biasLat}&lon=${biasLng}&bbox=${INDIA_BBOX}`;
 
     const pRes = await fetch(photonUrl, { signal: signal || photonCtrl.signal });

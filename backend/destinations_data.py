@@ -9,6 +9,7 @@ import urllib.parse
 import json
 import concurrent.futures
 import logging
+import re
 
 TYPO_MAP = {
     "kallakuruchi": "kallakurichi",
@@ -222,6 +223,33 @@ CURATED_PLACES = [
         "district": "Coimbatore",
         "type": "city",
         "keywords": ["kavundampalayam", "kavundaplayam", "kaundampalayam", "coimbatore north"],
+    },
+    {
+        "name": "Kanuvai",
+        "city": "Thadagam Road, Coimbatore, Tamil Nadu",
+        "lat": 11.065318,
+        "lng": 76.908538,
+        "district": "Coimbatore",
+        "type": "city",
+        "keywords": ["kanuvai", "kanuvai junction", "thadagam road", "coimbatore", "kovai"],
+    },
+    {
+        "name": "Kanuvai Bus Stop",
+        "city": "Thadagam Road, Kanuvai, Coimbatore",
+        "lat": 11.0664,
+        "lng": 76.8974,
+        "district": "Coimbatore",
+        "type": "bus_stand",
+        "keywords": ["kanuvai", "kanuvai bus stop", "kanuvai bus stand", "coimbatore"],
+    },
+    {
+        "name": "Vadavalli Bus Stand",
+        "city": "Marudhamalai Main Road, Vadavalli, Coimbatore",
+        "lat": 11.0315,
+        "lng": 76.9025,
+        "district": "Coimbatore",
+        "type": "bus_stand",
+        "keywords": ["vadavalli", "bus stand", "marudhamalai road", "coimbatore"],
     },
     {
         "name": "Thudiyalur Bus Stand",
@@ -514,11 +542,27 @@ def normalize_query(query: str) -> str:
 
 
 def search_curated_places(query: str, limit: int = 12) -> List[Dict[str, Any]]:
+    if not query or len(query.strip()) < 2:
+        return []
+
     raw = query.strip().lower()
-    normalized = normalize_query(raw)
-    raw_words = [w for w in raw.split() if len(w) >= 2]
+    clean_comma_str = " ".join(raw.replace(",", " , ").split())
+    clean_comma_str = clean_comma_str.replace(" ,", ",")
+    normalized = normalize_query(clean_comma_str)
+
+    has_comma = "," in raw
+    comma_parts = [p.strip() for p in raw.split(",") if p.strip()] if has_comma else []
+    target_place = comma_parts[0] if has_comma and comma_parts else ""
+    context_region = " ".join(comma_parts[1:]) if has_comma and len(comma_parts) > 1 else ""
+    target_norm = normalize_query(target_place) if target_place else ""
+    context_norm = normalize_query(context_region) if context_region else ""
+
     norm_words = [w for w in normalized.split() if len(w) >= 2]
-    terms = list(dict.fromkeys([t for t in [raw, normalized] + raw_words + norm_words if t]))
+    target_words = [w for w in target_norm.split() if len(w) >= 2] if target_norm else norm_words
+    primary_word = target_words[0] if target_words else (norm_words[0] if norm_words else "")
+
+    raw_words = [w for w in re.split(r"[\s,]+", raw) if len(w) >= 2]
+    terms = list(dict.fromkeys([t for t in [raw, normalized, target_place, target_norm] + raw_words + norm_words if t]))
 
     matched = []
     matched_districts = set()
@@ -530,35 +574,68 @@ def search_curated_places(query: str, limit: int = 12) -> List[Dict[str, Any]]:
         city_l = item.get("city", "").lower()
         kw_l = [k.lower() for k in item.get("keywords", [])]
 
-        is_match = any(
-            t in name_l or dist_l == t or any(t in k for k in kw_l) or t in city_l
-            for t in terms
-        )
+        is_match = False
+        all_words_match = False
+
+        if has_comma:
+            target_matches = (
+                target_place in name_l
+                or target_norm in name_l
+                or any(target_place in k or target_norm in k for k in kw_l)
+                or (target_words and all(tw in name_l or any(tw in k for k in kw_l) for tw in target_words))
+            )
+            if target_matches:
+                is_match = True
+                if not context_region or context_region in city_l or context_region in dist_l or any(context_region in k for k in kw_l):
+                    all_words_match = True
+        else:
+            all_words_match = len(norm_words) > 1 and all(
+                w in name_l or w in city_l or w in dist_l or any(w in k for k in kw_l)
+                for w in norm_words
+            )
+            if all_words_match:
+                is_match = True
+            elif len(norm_words) > 1:
+                if primary_word in name_l or any(primary_word in k for k in kw_l):
+                    is_match = True
+            else:
+                is_match = any(
+                    t in name_l or dist_l == t or any(t in k for k in kw_l) or t in city_l
+                    for t in terms
+                )
+
         if is_match:
             key = (round(item["lat"], 4), round(item["lng"], 4))
             if key not in added:
                 added.add(key)
-                matched.append(item)
+                matched.append({**item, "_all_words": all_words_match})
                 if item.get("district"):
                     matched_districts.add(item["district"].lower())
 
-    # Include related places under matched districts (like Google Maps)
+    # Include related places under matched districts only if searching the district itself
     related = []
-    for d in matched_districts:
-        for item in CURATED_PLACES:
-            if item.get("district", "").lower() == d:
-                key = (round(item["lat"], 4), round(item["lng"], 4))
-                if key not in added:
-                    added.add(key)
-                    related.append(item)
+    if not has_comma and len(norm_words) == 1:
+        for d in matched_districts:
+            if any(w in d or d in w for w in norm_words):
+                for item in CURATED_PLACES:
+                    if item.get("district", "").lower() == d:
+                        key = (round(item["lat"], 4), round(item["lng"], 4))
+                        if key not in added:
+                            added.add(key)
+                            related.append({**item, "_all_words": False})
 
-    # Sort: exact name match > starts with > city type > bus stand > others
+    # Sort
     def sort_key(x):
         n = x["name"].lower()
-        exact = any(n == t for t in terms)
-        starts = any(n.startswith(t) for t in terms)
+        if has_comma:
+            exact = n == target_place or n == target_norm
+            starts = n.startswith(target_place) or n.startswith(target_norm)
+        else:
+            exact = any(n == t for t in terms)
+            starts = any(n.startswith(t) for t in terms)
+        all_w = x.get("_all_words", False)
         t_order = {"city": 1, "bus_stand": 2, "station": 3, "landmark": 4, "hospital": 5, "college": 6}.get(x.get("type", ""), 10)
-        return (not exact, not starts, t_order)
+        return (not exact, not all_w, not starts, t_order)
 
     matched.sort(key=sort_key)
     related.sort(key=sort_key)
