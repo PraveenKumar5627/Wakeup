@@ -421,7 +421,7 @@ export async function deleteTrip(tripId) {
   return true;
 }
 
-import { searchDestinationsLocally, normalizeQuery } from '../data/destinationsData';
+import { searchDestinationsLocally, normalizeQuery } from '../data/destinationsData.js';
 
 /**
  * Searches places, colleges, bus stands, railway stations, and landmarks
