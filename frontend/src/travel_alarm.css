@@ -958,6 +958,47 @@
   filter: brightness(0.92) contrast(1.05);
 }
 
+.recent-chips-container {
+  margin-bottom: 2px;
+}
+
+.recent-chips-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 18px 6px;
+}
+
+.recent-header-left {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.recent-header-text {
+  font-size: 11.5px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: #64748B;
+}
+
+.recent-clear-btn {
+  background: none;
+  border: none;
+  font-size: 11px;
+  color: #3B82F6;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 4px;
+  transition: all 0.15s ease;
+}
+
+.recent-clear-btn:hover {
+  background-color: #EFF6FF;
+}
+
 .quick-chips-scroll {
   display: flex;
   gap: 8px;
@@ -981,12 +1022,29 @@
   white-space: nowrap;
   cursor: pointer;
   transition: all 0.15s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.quick-chip:hover {
+  background-color: #F8FAFC;
+  border-color: #CBD5E1;
+}
+
+.quick-chip.recent-search-chip {
+  background-color: #F8FAFC;
 }
 
 .quick-chip.chip-active {
   background-color: var(--ta-blue);
   color: #FFFFFF;
   border-color: var(--ta-blue);
+}
+
+.quick-chip.chip-active .chip-icon,
+.quick-chip.chip-active svg {
+  color: #FFFFFF !important;
 }
 
 .interactive-map-wrapper {

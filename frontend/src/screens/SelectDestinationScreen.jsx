@@ -221,6 +221,59 @@ export default function SelectDestinationScreen({
     isCalculating: false,
   });
 
+  // Recent Places Searched — Persisted in localStorage
+  const [recentSearches, setRecentSearches] = useState(() => {
+    try {
+      const stored = localStorage.getItem('wakeup_recent_places');
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return parsed;
+        }
+      }
+    } catch (e) {
+      console.warn('Error reading recent places from localStorage', e);
+    }
+    return [
+      { name: 'Madurai', city: 'Tamil Nadu', lat: 9.9252, lng: 78.1198, type: 'city' },
+      { name: 'Parikkal', city: 'Ulundurpettai, Kallakurichi', lat: 11.785145, lng: 79.367063, type: 'landmark' },
+      { name: 'Kallakurichi', city: 'Tamil Nadu', lat: 11.740626, lng: 78.963713, type: 'city' },
+      { name: 'Coimbatore', city: 'Tamil Nadu', lat: 11.0168, lng: 76.9558, type: 'city' },
+    ];
+  });
+
+  const saveToRecentSearches = useCallback((place) => {
+    if (!place?.name || !place?.lat || !place?.lng) return;
+    setRecentSearches((prev) => {
+      const filtered = prev.filter(
+        (p) => p.name.toLowerCase().trim() !== place.name.toLowerCase().trim()
+      );
+      const updated = [
+        {
+          name: place.name,
+          city: place.city || 'Tamil Nadu',
+          lat: Number(place.lat),
+          lng: Number(place.lng),
+          type: place.type || 'landmark',
+          source: place.source || 'recent',
+        },
+        ...filtered,
+      ].slice(0, 10);
+      try {
+        localStorage.setItem('wakeup_recent_places', JSON.stringify(updated));
+      } catch (err) {}
+      return updated;
+    });
+  }, []);
+
+  const handleClearRecentSearches = useCallback((e) => {
+    if (e) e.stopPropagation();
+    try {
+      localStorage.removeItem('wakeup_recent_places');
+    } catch {}
+    setRecentSearches([]);
+  }, []);
+
   // Calculate live distance from current location to selected destination immediately
   useEffect(() => {
     if (!selectedDestination?.lat || !selectedDestination?.lng) return;
@@ -573,6 +626,7 @@ export default function SelectDestinationScreen({
               setShowSuggestions(false);
               setIsConfirmed(true);
               updateMapForDestination(resolved, true);
+              saveToRecentSearches(resolved);
             }
           }
         );
@@ -584,8 +638,9 @@ export default function SelectDestinationScreen({
       setShowSuggestions(false);
       setIsConfirmed(true);
       updateMapForDestination(dest, true);
+      saveToRecentSearches(dest);
     },
-    [updateMapForDestination]
+    [updateMapForDestination, saveToRecentSearches]
   );
 
   // Immediate search and pin execution (triggered by Enter key or Search icon click)
@@ -775,6 +830,7 @@ export default function SelectDestinationScreen({
         setSearchQuery(placeName);
         setIsConfirmed(true);
         updateMapForDestination(newDest);
+        saveToRecentSearches(newDest);
       });
 
       // Drag pin to adjust user entered destination
@@ -807,6 +863,7 @@ export default function SelectDestinationScreen({
         setSearchQuery(placeName);
         setIsConfirmed(true);
         updateMapForDestination(newDest);
+        saveToRecentSearches(newDest);
       });
     } else {
       updateMapForDestination(selectedDestination);
@@ -877,6 +934,8 @@ export default function SelectDestinationScreen({
               } else if (searchQuery.trim().length >= 2) {
                 setShowSuggestions(true);
                 performGeocoding(searchQuery.trim());
+              } else if (!searchQuery.trim() && recentSearches.length > 0) {
+                setShowSuggestions(true);
               }
             }}
             autoComplete="off"
@@ -898,68 +957,98 @@ export default function SelectDestinationScreen({
           )}
         </div>
 
-        {/* Live Suggestions Dropdown */}
-        {showSuggestions && (suggestions.length > 0 || isSearchingOnline) && (
+        {/* Live Suggestions & Recent Searches Dropdown */}
+        {showSuggestions && (
           <div className="dest-suggestions-dropdown">
-            {suggestions.map((item, idx) => {
-              const itemDist =
-                currentLocation && item.lat && item.lng
-                  ? haversineDistanceKm(
-                      currentLocation.lat,
-                      currentLocation.lng,
-                      item.lat,
-                      item.lng
-                    )
-                  : null;
-
-              const isFirstRelated =
-                item.isRelated && (!suggestions[idx - 1] || !suggestions[idx - 1].isRelated);
-
-              return (
-                <React.Fragment key={`${item.name}-${item.lat}-${idx}`}>
-                  {isFirstRelated && (
-                    <div className="dest-suggestion-section-header">
-                      <Navigation size={12} className="shrink-0 text-blue-600" />
-                      <span>Related Places in {item.relatedTo || item.district || 'Destination'}</span>
-                    </div>
-                  )}
-
+            {/* Show Recent Searches in Dropdown if input is empty */}
+            {!searchQuery.trim() && recentSearches.length > 0 && (
+              <>
+                <div className="dest-suggestion-section-header">
+                  <Clock size={12} className="shrink-0 text-blue-600" />
+                  <span>Recent places searched</span>
+                </div>
+                {recentSearches.map((item, idx) => (
                   <div
+                    key={`drop-recent-${item.name}-${idx}`}
                     className="dest-suggestion-item"
                     onClick={() => handleSelectSuggestion(item)}
                   >
-                    <div className={`dest-suggestion-pin ${getPlacePinClass(item.type)}`}>
-                      {renderPlaceIcon(item.type)}
+                    <div className="dest-suggestion-pin pin-recent">
+                      <Clock size={15} className="text-blue-600" />
                     </div>
                     <div className="dest-suggestion-info">
                       <div className="dest-suggestion-title-row">
-                        <span className="dest-suggestion-name">
-                          {highlightMatch(item.name, searchQuery)}
-                        </span>
-                        {item.isGoogle && (
-                          <span className="google-source-badge">
-                            Google
-                          </span>
-                        )}
-                        {item.type && (
-                          <span className="dest-type-badge">
-                            {formatPlaceType(item.type)}
-                          </span>
-                        )}
+                        <span className="dest-suggestion-name">{item.name}</span>
+                        <span className="dest-type-badge">Recent</span>
                       </div>
-                      <div className="dest-suggestion-city line-clamp-1">
-                        {item.city}
-                      </div>
+                      <div className="dest-suggestion-city line-clamp-1">{item.city}</div>
                     </div>
-                    {itemDist !== null && (
-                      <span className="dest-item-distance-pill">
-                        {itemDist < 10 ? itemDist.toFixed(1) : Math.round(itemDist)} km
-                      </span>
-                    )}
                   </div>
-                </React.Fragment>
-              );
-            })}
+                ))}
+              </>
+            )}
+
+            {/* Matching Suggestions when typing */}
+            {searchQuery.trim() &&
+              suggestions.map((item, idx) => {
+                const itemDist =
+                  currentLocation && item.lat && item.lng
+                    ? haversineDistanceKm(
+                        currentLocation.lat,
+                        currentLocation.lng,
+                        item.lat,
+                        item.lng
+                      )
+                    : null;
+
+                const isFirstRelated =
+                  item.isRelated && (!suggestions[idx - 1] || !suggestions[idx - 1].isRelated);
+
+                return (
+                  <React.Fragment key={`${item.name}-${item.lat}-${idx}`}>
+                    {isFirstRelated && (
+                      <div className="dest-suggestion-section-header">
+                        <Navigation size={12} className="shrink-0 text-blue-600" />
+                        <span>Related Places in {item.relatedTo || item.district || 'Destination'}</span>
+                      </div>
+                    )}
+
+                    <div
+                      className="dest-suggestion-item"
+                      onClick={() => handleSelectSuggestion(item)}
+                    >
+                      <div className={`dest-suggestion-pin ${getPlacePinClass(item.type)}`}>
+                        {renderPlaceIcon(item.type)}
+                      </div>
+                      <div className="dest-suggestion-info">
+                        <div className="dest-suggestion-title-row">
+                          <span className="dest-suggestion-name">
+                            {highlightMatch(item.name, searchQuery)}
+                          </span>
+                          {item.isGoogle && (
+                            <span className="google-source-badge">
+                              Google
+                            </span>
+                          )}
+                          {item.type && (
+                            <span className="dest-type-badge">
+                              {formatPlaceType(item.type)}
+                            </span>
+                          )}
+                        </div>
+                        <div className="dest-suggestion-city line-clamp-1">
+                          {item.city}
+                        </div>
+                      </div>
+                      {itemDist !== null && (
+                        <span className="dest-item-distance-pill">
+                          {itemDist < 10 ? itemDist.toFixed(1) : Math.round(itemDist)} km
+                        </span>
+                      )}
+                    </div>
+                  </React.Fragment>
+                );
+              })}
 
             {isSearchingOnline && suggestions.length > 0 && (
               <div className="dest-suggestion-loading-more">
@@ -984,37 +1073,59 @@ export default function SelectDestinationScreen({
         )}
       </div>
 
-      {/* Quick Location Chips (Includes Kallakurichi, Parikkal, Coimbatore, Chennai, etc.) */}
-      <div className="quick-chips-scroll">
-        {QUICK_DESTINATION_CHIPS.map((item) => {
-          const chipDist =
-            currentLocation && item.lat && item.lng
-              ? haversineDistanceKm(
-                  currentLocation.lat,
-                  currentLocation.lng,
-                  item.lat,
-                  item.lng
-                )
-              : null;
-
-          return (
+      {/* Below Search Bar: Recent places searched & Quick Destinations */}
+      <div className="recent-chips-container">
+        <div className="recent-chips-header">
+          <div className="recent-header-left">
+            <Clock size={12} className="text-blue-600" />
+            <span className="recent-header-text">Recent places searched</span>
+          </div>
+          {recentSearches.length > 0 && (
             <button
-              key={item.name}
               type="button"
-              className={`quick-chip ${
-                selectedDestination.name === item.name ? 'chip-active' : ''
-              }`}
-              onClick={() => handleSelectSuggestion(item)}
+              className="recent-clear-btn"
+              onClick={handleClearRecentSearches}
+              title="Clear recent searches"
             >
-              <span>{item.name}</span>
-              {chipDist !== null && (
-                <span className="chip-dist">
-                  ({chipDist < 10 ? chipDist.toFixed(1) : Math.round(chipDist)}km)
-                </span>
-              )}
+              Clear
             </button>
-          );
-        })}
+          )}
+        </div>
+
+        <div className="quick-chips-scroll">
+          {recentSearches.map((item) => {
+            const isSelected =
+              selectedDestination.name.toLowerCase() === item.name.toLowerCase();
+            return (
+              <button
+                key={`recent-${item.name}`}
+                type="button"
+                className={`quick-chip recent-search-chip ${isSelected ? 'chip-active' : ''}`}
+                onClick={() => handleSelectSuggestion(item)}
+                title={`Recent search: ${item.name}`}
+              >
+                <Clock size={11} className={`chip-icon ${isSelected ? 'text-white' : 'text-blue-500'}`} />
+                <span>{item.name}</span>
+              </button>
+            );
+          })}
+          {QUICK_DESTINATION_CHIPS.filter(
+            (q) => !recentSearches.some((r) => r.name.toLowerCase() === q.name.toLowerCase())
+          ).map((item) => {
+            const isSelected =
+              selectedDestination.name.toLowerCase() === item.name.toLowerCase();
+            return (
+              <button
+                key={`pop-${item.name}`}
+                type="button"
+                className={`quick-chip ${isSelected ? 'chip-active' : ''}`}
+                onClick={() => handleSelectSuggestion(item)}
+              >
+                <span>{item.name}</span>
+              </button>
+            );
+          })}
+        </div>
       </div>
 
       {/* Interactive Google Map View — Pinned to User Entered Destination Only */}
