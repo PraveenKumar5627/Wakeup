@@ -1,15 +1,29 @@
 /**
- * Audio Alarm Utility using Web Audio API
+ * Audio Alarm Utility using Web Audio API & Custom Audio File Playback
  * Generates an audible alarm sound (two-tone repeating wake-up chime)
- * completely synthesized in the browser without requiring external audio files.
+ * completely synthesized in the browser without requiring external audio files,
+ * AND supports user-selected custom audio songs from their device's file manager.
  */
+
+import { getCustomAudioFile } from './customAudioDB.js';
 
 class AlarmSoundManager {
   constructor() {
     this.audioCtx = null;
     this.timerId = null;
     this.isPlaying = false;
-    this.currentTone = 'transit'; // 'transit' | 'gentle' | 'siren' | 'bell'
+    this.currentTone = 'transit'; // 'transit' | 'gentle' | 'siren' | 'bell' | 'custom'
+
+    // Custom song playback
+    this.customAudio = null;
+    this.customAudioUrl = null;
+    this.customAudioName = '';
+    this.previewTimer = null;
+
+    // Automatically load any previously saved custom audio from IndexedDB
+    if (typeof window !== 'undefined') {
+      this.loadCustomAudio();
+    }
   }
 
   initContext() {
@@ -28,20 +42,68 @@ class AlarmSoundManager {
     this.currentTone = tone;
   }
 
+  /**
+   * Register a custom audio file (from user's mobile file manager)
+   */
+  setCustomAudioBlob(blob, fileName = 'Custom Song') {
+    if (this.customAudioUrl) {
+      URL.revokeObjectURL(this.customAudioUrl);
+    }
+    try {
+      this.customAudioUrl = URL.createObjectURL(blob);
+      this.customAudio = new Audio(this.customAudioUrl);
+      this.customAudio.loop = true;
+      this.customAudioName = fileName;
+      return true;
+    } catch (err) {
+      console.error('Failed to create custom audio object:', err);
+      return false;
+    }
+  }
+
+  /**
+   * Load saved custom audio from IndexedDB on startup
+   */
+  async loadCustomAudio() {
+    try {
+      const data = await getCustomAudioFile();
+      if (data && data.blob) {
+        this.setCustomAudioBlob(data.blob, data.fileName);
+        return data.fileName;
+      }
+    } catch (e) {
+      console.warn('Could not restore custom audio:', e);
+    }
+    return null;
+  }
+
+  /**
+   * Remove custom audio
+   */
+  clearCustomAudio() {
+    if (this.customAudio) {
+      this.customAudio.pause();
+      this.customAudio.currentTime = 0;
+      this.customAudio = null;
+    }
+    if (this.customAudioUrl) {
+      URL.revokeObjectURL(this.customAudioUrl);
+      this.customAudioUrl = null;
+    }
+    this.customAudioName = '';
+  }
+
   playToneNote(tone, step = 0) {
     if (!this.audioCtx) return;
     try {
       if (tone === 'gentle') {
-        // Soft warm chords
         const notes = [523.25, 659.25, 783.99, 1046.5]; // C5, E5, G5, C6
         const f = notes[step % notes.length];
         this.playBeep(f, 0.45, 'sine', 0.25);
       } else if (tone === 'siren') {
-        // High attention alert
         const f = step % 2 === 0 ? 1046.5 : 880;
         this.playBeep(f, 0.22, 'sawtooth', 0.2);
       } else if (tone === 'bell') {
-        // Resonant bell chime
         const f = step % 2 === 0 ? 1174.66 : 880; // D6 / A5
         this.playBeep(f, 0.5, 'sine', 0.35);
       } else {
@@ -76,6 +138,24 @@ class AlarmSoundManager {
   }
 
   previewTone(tone) {
+    if (tone === 'custom') {
+      if (this.customAudio) {
+        this.stopPreview();
+        this.customAudio.currentTime = 0;
+        this.customAudio.play().catch((err) => {
+          console.warn('Custom audio preview notice:', err);
+        });
+        this.previewTimer = setTimeout(() => {
+          this.stopPreview();
+        }, 4000);
+      } else {
+        // Fallback to transit if no custom file selected
+        this.previewTone('transit');
+      }
+      return;
+    }
+
+    this.stopPreview();
     this.initContext();
     this.playToneNote(tone, 0);
     setTimeout(() => {
@@ -83,9 +163,19 @@ class AlarmSoundManager {
     }, 280);
   }
 
+  stopPreview() {
+    if (this.previewTimer) {
+      clearTimeout(this.previewTimer);
+      this.previewTimer = null;
+    }
+    if (this.customAudio && !this.isPlaying) {
+      this.customAudio.pause();
+      this.customAudio.currentTime = 0;
+    }
+  }
+
   startAlarm(tone = null) {
     if (this.isPlaying) return;
-    this.initContext();
     this.isPlaying = true;
     const activeTone = tone || this.currentTone;
 
@@ -96,13 +186,42 @@ class AlarmSoundManager {
       } catch (e) {}
     }
 
-    let step = 0;
-    // Play immediately
-    this.playToneNote(activeTone, step++);
+    // 1. Play Custom Song if selected and loaded
+    if (activeTone === 'custom' && this.customAudio) {
+      try {
+        this.customAudio.currentTime = 0;
+        this.customAudio.play().catch((err) => {
+          console.warn('Custom song playback fallback to synthesized chime:', err);
+          this.playSynthesizedAlarmLoop('transit');
+        });
 
-    // Repeat alarm chime every 450ms
+        // Repeat vibration while custom audio plays
+        let vibCount = 0;
+        this.timerId = setInterval(() => {
+          vibCount++;
+          if (typeof navigator !== 'undefined' && navigator.vibrate && vibCount % 2 === 0) {
+            try {
+              navigator.vibrate(300);
+            } catch (e) {}
+          }
+        }, 1000);
+        return;
+      } catch (e) {
+        console.warn('Custom audio play error:', e);
+      }
+    }
+
+    // 2. Play Synthesized Chimes (transit, gentle, siren, bell)
+    this.playSynthesizedAlarmLoop(activeTone);
+  }
+
+  playSynthesizedAlarmLoop(tone) {
+    this.initContext();
+    let step = 0;
+    this.playToneNote(tone, step++);
+
     this.timerId = setInterval(() => {
-      this.playToneNote(activeTone, step++);
+      this.playToneNote(tone, step++);
 
       if (typeof navigator !== 'undefined' && navigator.vibrate && step % 2 === 0) {
         try {
@@ -114,10 +233,18 @@ class AlarmSoundManager {
 
   stopAlarm() {
     this.isPlaying = false;
+    this.stopPreview();
+
+    if (this.customAudio) {
+      this.customAudio.pause();
+      this.customAudio.currentTime = 0;
+    }
+
     if (this.timerId) {
       clearInterval(this.timerId);
       this.timerId = null;
     }
+
     if (typeof navigator !== 'undefined' && navigator.vibrate) {
       try {
         navigator.vibrate(0);
@@ -127,4 +254,3 @@ class AlarmSoundManager {
 }
 
 export const alarmAudio = new AlarmSoundManager();
-

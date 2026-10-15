@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import StatusBar from '../components/StatusBar';
 import BottomNavBar from '../components/BottomNavBar';
 import {
@@ -16,8 +16,17 @@ import {
   Check,
   Play,
   RotateCcw,
+  Music,
+  FolderOpen,
+  Upload,
+  Trash2,
 } from 'lucide-react';
 import { alarmAudio } from '../utils/audioAlarm';
+import {
+  saveCustomAudioFile,
+  getCustomAudioFile,
+  deleteCustomAudioFile,
+} from '../utils/customAudioDB';
 
 export default function SettingsScreen({
   userName = 'Praveen',
@@ -46,6 +55,22 @@ export default function SettingsScreen({
   const [editingName, setEditingName] = useState(false);
   const [nameInput, setNameInput] = useState(userName);
 
+  // Custom song from phone's file manager
+  const [customSongName, setCustomSongName] = useState(
+    () => localStorage.getItem('arrivo_custom_audio_name') || ''
+  );
+  const [isCustomPreviewing, setIsCustomPreviewing] = useState(false);
+  const fileInputRef = useRef(null);
+
+  // Load custom audio metadata on mount
+  useEffect(() => {
+    getCustomAudioFile().then((data) => {
+      if (data && data.fileName) {
+        setCustomSongName(data.fileName);
+      }
+    });
+  }, []);
+
   const handleToneChange = (tone) => {
     setSelectedTone(tone);
     localStorage.setItem('arrivo_setting_tone', tone);
@@ -56,6 +81,61 @@ export default function SettingsScreen({
     setIsPlayingPreview(true);
     alarmAudio.previewTone(tone);
     setTimeout(() => setIsPlayingPreview(false), 900);
+  };
+
+  const handleFileSelected = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (file.size > 25 * 1024 * 1024) {
+      alert('Selected audio file is too large. Please select a song under 25MB.');
+      return;
+    }
+
+    try {
+      await saveCustomAudioFile(file, file.name);
+      alarmAudio.setCustomAudioBlob(file, file.name);
+      setCustomSongName(file.name);
+      localStorage.setItem('arrivo_custom_audio_name', file.name);
+      handleToneChange('custom');
+
+      // Quick 3-second preview so user confirms it sounds great
+      setIsCustomPreviewing(true);
+      alarmAudio.previewTone('custom');
+      setTimeout(() => setIsCustomPreviewing(false), 3200);
+    } catch (err) {
+      console.error('Failed to set custom song:', err);
+      alert('Could not load audio file. Please try another audio format (MP3, WAV, M4A, AAC).');
+    }
+
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  };
+
+  const handleToggleCustomPreview = (e) => {
+    e.stopPropagation();
+    if (isCustomPreviewing) {
+      alarmAudio.stopPreview();
+      setIsCustomPreviewing(false);
+    } else {
+      setIsCustomPreviewing(true);
+      alarmAudio.previewTone('custom');
+      setTimeout(() => setIsCustomPreviewing(false), 4000);
+    }
+  };
+
+  const handleRemoveCustomSong = async (e) => {
+    e.stopPropagation();
+    alarmAudio.stopPreview();
+    setIsCustomPreviewing(false);
+    await deleteCustomAudioFile();
+    alarmAudio.clearCustomAudio();
+    setCustomSongName('');
+    localStorage.removeItem('arrivo_custom_audio_name');
+    if (selectedTone === 'custom') {
+      handleToneChange('transit');
+    }
   };
 
   const handleSaveName = () => {
@@ -208,6 +288,81 @@ export default function SettingsScreen({
                 </div>
               ))}
             </div>
+
+            {/* Hidden native mobile file input to access device file manager */}
+            <input
+              type="file"
+              ref={fileInputRef}
+              accept="audio/*,.mp3,.wav,.ogg,.m4a,.aac,.flac"
+              onChange={handleFileSelected}
+              style={{ display: 'none' }}
+              id="input-custom-song-file"
+            />
+
+            {/* Custom Song Choice / Active Card */}
+            {customSongName ? (
+              <div
+                className={`custom-song-card ${selectedTone === 'custom' ? 'tone-selected' : ''}`}
+                onClick={() => handleToneChange('custom')}
+              >
+                <div className="custom-song-left">
+                  <div className="custom-song-icon-badge">
+                    <Music size={18} className="text-blue-600" />
+                  </div>
+                  <div className="custom-song-details">
+                    <div className="custom-song-badge">CUSTOM ALARM SONG</div>
+                    <div className="custom-song-filename" title={customSongName}>
+                      {customSongName}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="custom-song-actions" onClick={(e) => e.stopPropagation()}>
+                  <button
+                    type="button"
+                    className={`custom-preview-btn ${isCustomPreviewing ? 'is-playing' : ''}`}
+                    onClick={handleToggleCustomPreview}
+                    title={isCustomPreviewing ? 'Stop Preview' : 'Preview Custom Song'}
+                  >
+                    <Play size={13} className="fill-current" />
+                  </button>
+                  <button
+                    type="button"
+                    className="custom-action-icon-btn"
+                    onClick={() => fileInputRef.current?.click()}
+                    title="Choose Another Song from Phone Files"
+                  >
+                    <FolderOpen size={15} />
+                  </button>
+                  <button
+                    type="button"
+                    className="custom-action-icon-btn custom-delete-btn"
+                    onClick={handleRemoveCustomSong}
+                    title="Remove Custom Song"
+                  >
+                    <Trash2 size={15} />
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <button
+                type="button"
+                className="btn-choose-custom-song"
+                onClick={() => fileInputRef.current?.click()}
+                id="btn-open-file-manager"
+              >
+                <div className="choose-song-icon-box">
+                  <Music size={18} className="text-blue-600" />
+                </div>
+                <div className="choose-song-text">
+                  <span className="choose-song-title">Set Custom Song</span>
+                  <span className="choose-song-sub">Choose any MP3, AAC, or song from phone files</span>
+                </div>
+                <div className="choose-song-arrow">
+                  <FolderOpen size={16} className="text-blue-600" />
+                </div>
+              </button>
+            )}
           </div>
 
           {/* Snooze Duration */}

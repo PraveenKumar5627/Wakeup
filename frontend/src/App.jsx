@@ -114,6 +114,11 @@ export default function App() {
 
     // Check backend health
     checkBackendHealth().then(setIsBackendOnline);
+
+    // Initialize alarm audio tone and load custom song from IndexedDB if saved
+    const savedTone = localStorage.getItem('arrivo_setting_tone') || 'transit';
+    alarmAudio.setTone(savedTone);
+    alarmAudio.loadCustomAudio();
   }, []);
 
   // ── Screen Wake Lock Management ──────────────────────────────────────────
