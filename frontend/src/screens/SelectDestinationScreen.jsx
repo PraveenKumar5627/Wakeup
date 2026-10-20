@@ -193,7 +193,10 @@ export default function SelectDestinationScreen({
   initialDestination = null,
   initialAlertDistanceKm = 5,
   currentLocation = null,
+  isFetchingLocation = false,
+  locationPermStatus = 'idle',
   onGetLocation = null,
+  onRequestPermission = null,
   onBack,
   onStartTrip,
 }) {
@@ -211,6 +214,23 @@ export default function SelectDestinationScreen({
     ![2, 3, 5].includes(initialAlertDistanceKm) ? String(initialAlertDistanceKm) : '4'
   );
   const [isConfirmed, setIsConfirmed] = useState(true);
+  const [isDetectingLocation, setIsDetectingLocation] = useState(false);
+
+  const handleDetectLocation = async () => {
+    if (isDetectingLocation || isFetchingLocation) return;
+    setIsDetectingLocation(true);
+    try {
+      if (onRequestPermission) {
+        await onRequestPermission();
+      } else if (onGetLocation) {
+        await onGetLocation({ force: true, enableServices: true });
+      }
+    } catch (err) {
+      console.warn('Detect location error:', err);
+    } finally {
+      setIsDetectingLocation(false);
+    }
+  };
 
   // Live Distance between User's Current Location and Selected Destination
   const [distanceInfo, setDistanceInfo] = useState({
@@ -280,7 +300,7 @@ export default function SelectDestinationScreen({
 
     if (!currentLocation?.lat || !currentLocation?.lng) {
       if (onGetLocation) {
-        onGetLocation().catch(() => {});
+        onGetLocation({ force: true, enableServices: true }).catch(() => {});
       }
       setDistanceInfo({
         distanceKm: null,
@@ -904,8 +924,11 @@ export default function SelectDestinationScreen({
     onStartTrip(selectedDestination, finalDist);
   };
 
-  // Direct Google Maps Search Link (pinned at exact coordinates)
-  const googleMapsUrl = `https://www.google.com/maps/search/?api=1&query=${selectedDestination.lat},${selectedDestination.lng}`;
+  // Direct Google Maps Link (Turn-by-turn driving directions from current location to destination)
+  const googleMapsUrl =
+    currentLocation?.lat && currentLocation?.lng
+      ? `https://www.google.com/maps/dir/?api=1&origin=${currentLocation.lat},${currentLocation.lng}&destination=${selectedDestination.lat},${selectedDestination.lng}&travelmode=driving`
+      : `https://www.google.com/maps/search/?api=1&query=${selectedDestination.lat},${selectedDestination.lng}`;
 
   return (
     <div className="screen-container screen-select-dest">
@@ -1231,6 +1254,8 @@ export default function SelectDestinationScreen({
                 <span className="dest-preview-dist-val">
                   {distanceInfo.distanceKm !== null
                     ? `${distanceInfo.distanceKm.toFixed(1)} km`
+                    : isDetectingLocation || isFetchingLocation
+                    ? 'Detecting location...'
                     : currentLocation
                     ? 'Measuring distance...'
                     : 'Location not detected'}
@@ -1243,7 +1268,9 @@ export default function SelectDestinationScreen({
               </div>
               <p className="dest-preview-dist-sub">
                 {distanceInfo.distanceKm !== null
-                  ? `Distance from your current location${distanceInfo.durationText ? ` • ~${distanceInfo.durationText}` : ''}`
+                  ? `Distance from your current GPS location${distanceInfo.durationText ? ` • ~${distanceInfo.durationText}` : ''}`
+                  : isDetectingLocation || isFetchingLocation
+                  ? 'Connecting to GPS for instant accurate distance...'
                   : currentLocation
                   ? 'Calculating live distance from GPS...'
                   : 'Detect location to see exact distance to destination'}
@@ -1251,14 +1278,29 @@ export default function SelectDestinationScreen({
             </div>
           </div>
 
-          {!currentLocation && onGetLocation && (
+          {(onGetLocation || onRequestPermission) && (
             <button
               type="button"
-              className="dest-detect-btn"
-              onClick={() => onGetLocation()}
+              className={`dest-detect-btn ${isDetectingLocation || isFetchingLocation ? 'dest-detect-btn-loading' : ''}`}
+              onClick={handleDetectLocation}
+              disabled={isDetectingLocation || isFetchingLocation}
             >
-              <LocateFixed size={14} className="mr-1" />
-              Detect My Location
+              {isDetectingLocation || isFetchingLocation ? (
+                <>
+                  <Loader2 size={14} className="mr-1.5 animate-spin text-blue-600 inline" />
+                  <span>Acquiring Live GPS Location...</span>
+                </>
+              ) : currentLocation ? (
+                <>
+                  <LocateFixed size={14} className="mr-1 inline text-blue-600" />
+                  <span>Update / Re-detect Live GPS</span>
+                </>
+              ) : (
+                <>
+                  <LocateFixed size={14} className="mr-1 inline" />
+                  <span>Detect My Location</span>
+                </>
+              )}
             </button>
           )}
         </div>

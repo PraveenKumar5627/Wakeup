@@ -63,7 +63,7 @@ export async function fetchOsrmRoadDistance(lat1, lon1, lat2, lon2) {
 
   try {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 2500);
+    const timeoutId = setTimeout(() => controller.abort(), 4500);
 
     const url = `https://router.project-osrm.org/route/v1/driving/${lon1.toFixed(6)},${lat1.toFixed(6)};${lon2.toFixed(6)},${lat2.toFixed(6)}?overview=false`;
     const res = await fetch(url, {
@@ -128,6 +128,8 @@ export async function calculateDistance({
   destLat,
   destLng,
   alertDistance,
+  startLat,
+  startLng,
 }) {
   const currentLatitude = Number(currentLat);
   const currentLongitude = Number(currentLng);
@@ -161,7 +163,7 @@ export async function calculateDistance({
     // Notify backend in background without awaiting or blocking UI
     try {
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 1200);
+      const timeoutId = setTimeout(() => controller.abort(), 3500);
       fetch(`${BACKEND_URL}/calculate-distance`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -171,6 +173,8 @@ export async function calculateDistance({
           destination_latitude: destinationLatitude,
           destination_longitude: destinationLongitude,
           alert_distance: alertDistKm,
+          start_latitude: startLat != null ? Number(startLat) : undefined,
+          start_longitude: startLng != null ? Number(startLng) : undefined,
         }),
         signal: controller.signal,
       })
@@ -189,10 +193,10 @@ export async function calculateDistance({
     };
   }
 
-  // 3. Fallback: Fast Backend request with 1.2s timeout if OSRM was unavailable
+  // 3. Fallback: Fast Backend request with 4s timeout if client OSRM was unavailable
   try {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 1200);
+    const timeoutId = setTimeout(() => controller.abort(), 4000);
 
     const payload = {
       current_latitude: currentLatitude,
@@ -200,6 +204,8 @@ export async function calculateDistance({
       destination_latitude: destinationLatitude,
       destination_longitude: destinationLongitude,
       alert_distance: alertDistKm,
+      start_latitude: startLat != null ? Number(startLat) : undefined,
+      start_longitude: startLng != null ? Number(startLng) : undefined,
     };
 
     const response = await fetch(`${BACKEND_URL}/calculate-distance`, {

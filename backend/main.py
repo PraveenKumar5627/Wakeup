@@ -9,13 +9,20 @@ import concurrent.futures
 import json
 import logging
 import math
+import os
+import sys
 import time
 from typing import Optional, Tuple
 import urllib.parse
 import urllib.request
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, AliasChoices
+
+# Ensure backend directory is in python path for absolute imports regardless of invocation cwd
+_BACKEND_DIR = os.path.dirname(os.path.abspath(__file__))
+if _BACKEND_DIR not in sys.path:
+    sys.path.insert(0, _BACKEND_DIR)
 
 # -----------------------------------------------------------------------------
 # 1. Initialize FastAPI Application
@@ -33,22 +40,8 @@ app = FastAPI(
 # -----------------------------------------------------------------------------
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "https://wakeup-ashy.vercel.app",   # Vercel production
-        "http://localhost:5173",             # Vite local dev
-        "http://localhost:3000",             # Alt local dev port
-        "http://localhost:8000",             # Local API dev port
-        "http://localhost",                  # Capacitor Android default WebView origin
-        "https://localhost",                 # Capacitor HTTPS scheme
-        "capacitor://localhost",             # Capacitor iOS custom scheme
-        "ionic://localhost",                 # Ionic/Capacitor mobile origin
-        "http://127.0.0.1:5173",             # Vite local dev (IP)
-        "http://127.0.0.1:3000",             # Alt local dev port (IP)
-        "http://127.0.0.1:8000",             # Local API dev (IP)
-        "http://10.0.2.2:8000",              # Android Emulator host loopback
-        "http://10.0.2.2:5173",              # Android Emulator Vite dev loopback
-    ],
-    allow_origin_regex=r"^https?://(localhost|127\.0\.0\.1|10\.0\.2\.2)(:\d+)?$|^https://.*\.vercel\.app$|^capacitor://localhost$|^ionic://localhost$",
+    allow_origins=["*"],
+    allow_origin_regex=r".*",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -59,27 +52,75 @@ app.add_middleware(
 # -----------------------------------------------------------------------------
 class DistanceRequest(BaseModel):
     """
-    Input schema sent from the React frontend.
-    Validates that latitude is between -90 and 90,
-    longitude is between -180 and 180, and alert distance is positive.
+    Input schema sent from the React frontend or mobile client.
+    Accepts standard snake_case, camelCase, or short coordinate aliases.
+    Validates latitude (-90 to 90) and longitude (-180 to 180).
     """
     current_latitude: float = Field(
-        ..., ge=-90.0, le=90.0, description="Current latitude of the user in degrees"
+        ...,
+        ge=-90.0,
+        le=90.0,
+        validation_alias=AliasChoices(
+            "current_latitude", "currentLat", "current_lat", "lat", "latitude"
+        ),
+        description="Current latitude of the user in degrees",
     )
     current_longitude: float = Field(
-        ..., ge=-180.0, le=180.0, description="Current longitude of the user in degrees"
+        ...,
+        ge=-180.0,
+        le=180.0,
+        validation_alias=AliasChoices(
+            "current_longitude", "currentLng", "current_lng", "current_lon", "lng", "lon", "longitude"
+        ),
+        description="Current longitude of the user in degrees",
     )
     destination_latitude: float = Field(
-        ..., ge=-90.0, le=90.0, description="Destination latitude in degrees"
+        ...,
+        ge=-90.0,
+        le=90.0,
+        validation_alias=AliasChoices(
+            "destination_latitude", "dest_lat", "destLat", "dest_latitude", "destination_lat"
+        ),
+        description="Destination latitude in degrees",
     )
     destination_longitude: float = Field(
-        ..., ge=-180.0, le=180.0, description="Destination longitude in degrees"
+        ...,
+        ge=-180.0,
+        le=180.0,
+        validation_alias=AliasChoices(
+            "destination_longitude", "dest_lng", "destLng", "dest_lon", "dest_longitude", "destination_lng"
+        ),
+        description="Destination longitude in degrees",
     )
     alert_distance: float = Field(
-        ..., gt=0.0, description="Alert trigger distance in kilometers (e.g., 1, 2, 3, 5)"
+        default=3.0,
+        gt=0.0,
+        validation_alias=AliasChoices(
+            "alert_distance", "alert_distance_km", "alertDistance", "alert_dist", "threshold"
+        ),
+        description="Alert trigger distance in kilometers (e.g., 1, 2, 3, 5)",
+    )
+    start_latitude: Optional[float] = Field(
+        default=None,
+        ge=-90.0,
+        le=90.0,
+        validation_alias=AliasChoices(
+            "start_latitude", "start_lat", "startLat", "initial_latitude", "initial_lat"
+        ),
+        description="Trip start latitude (optional, for calculating travelled distance)",
+    )
+    start_longitude: Optional[float] = Field(
+        default=None,
+        ge=-180.0,
+        le=180.0,
+        validation_alias=AliasChoices(
+            "start_longitude", "start_lng", "startLng", "initial_longitude", "initial_lng"
+        ),
+        description="Trip start longitude (optional, for calculating travelled distance)",
     )
 
     model_config = {
+        "populate_by_name": True,
         "json_schema_extra": {
             "example": {
                 "current_latitude": 13.0827,
@@ -87,14 +128,16 @@ class DistanceRequest(BaseModel):
                 "destination_latitude": 13.0878,
                 "destination_longitude": 80.2785,
                 "alert_distance": 3.0,
+                "start_latitude": 13.0500,
+                "start_longitude": 80.2500,
             }
-        }
+        },
     }
 
 
 class DistanceResponse(BaseModel):
     """
-    Output schema returned to the React frontend.
+    Output schema returned to the React frontend or mobile client.
     """
     distance_km: float = Field(..., description="Calculated road or straight-line distance in kilometers")
     alert: bool = Field(..., description="True if distance_km <= alert_distance, otherwise False")
@@ -103,6 +146,9 @@ class DistanceResponse(BaseModel):
     duration_min: Optional[float] = Field(default=None, description="Estimated driving time in minutes")
     duration_text: Optional[str] = Field(default=None, description="Formatted driving time (e.g. '5 hr 1 min')")
     straight_line_km: Optional[float] = Field(default=None, description="Straight-line spherical distance for comparison")
+    travelled_distance_km: float = Field(default=0.0, description="Distance travelled from start in km")
+    initial_distance_km: Optional[float] = Field(default=None, description="Initial total distance in km")
+    progress_percentage: float = Field(default=0.0, description="Percentage of trip completed (0-100%)")
 
 
 # -----------------------------------------------------------------------------
@@ -170,9 +216,10 @@ def get_road_distance(
 ) -> Tuple[float, Optional[float], Optional[str], str]:
     """
     Calculate actual driving/road distance between two points using
-    the OpenStreetMap OSRM routing engine (matches Google Maps driving route).
-    Falls back gracefully to straight-line Haversine distance if the routing
-    engine is unreachable or if no road connects the points.
+    OpenStreetMap OSRM routing engines (matches Google Maps driving route).
+    Uses primary and secondary routing servers, and falls back gracefully to
+    straight-line spherical Haversine distance with estimated road duration
+    if the routing engines are unreachable.
 
     Returns:
         (distance_km, duration_min, duration_text, route_type)
@@ -182,61 +229,65 @@ def get_road_distance(
     if abs(lat1 - lat2) < 0.0001 and abs(lon1 - lon2) < 0.0001:
         return 0.0, 0.0, "0 min", "road"
 
-    # Cache lookup by rounded coordinates (~100m precision)
-    cache_key = (round(lat1, 3), round(lon1, 3), round(lat2, 3), round(lon2, 3))
+    # Cache lookup by rounded coordinates (~11m precision for responsive travel tracking)
+    cache_key = (round(lat1, 4), round(lon1, 4), round(lat2, 4), round(lon2, 4))
     now = time.time()
     if cache_key in _ROUTING_CACHE:
-        cached_time, cached_dist, cached_dur, cached_text = _ROUTING_CACHE[cache_key]
+        cached_time, cached_dist, cached_dur, cached_text, cached_type = _ROUTING_CACHE[cache_key]
         if now - cached_time < _CACHE_TTL_SECONDS:
-            return cached_dist, cached_dur, cached_text, "road"
+            return cached_dist, cached_dur, cached_text, cached_type
 
-    # Try OSRM driving route API
-    # Format: lon,lat;lon,lat
-    url = (
-        f"https://router.project-osrm.org/route/v1/driving/"
-        f"{lon1:.6f},{lat1:.6f};{lon2:.6f},{lat2:.6f}"
-        f"?overview=false"
-    )
+    # List of OSRM routing servers: Primary project-osrm, secondary openstreetmap.de mirror
+    routing_urls = [
+        f"https://router.project-osrm.org/route/v1/driving/{lon1:.6f},{lat1:.6f};{lon2:.6f},{lat2:.6f}?overview=false",
+        f"https://routing.openstreetmap.de/routed-car/route/v1/driving/{lon1:.6f},{lat1:.6f};{lon2:.6f},{lat2:.6f}?overview=false",
+    ]
 
-    try:
-        req = urllib.request.Request(
-            url,
-            headers={
-                "User-Agent": "TravelDestinationAlarm/2.0 (FastAPI Backend; GPS Navigation)",
-                "Accept": "application/json",
-            },
-        )
-        with urllib.request.urlopen(req, timeout=4.0) as resp:
-            if resp.status == 200:
-                data = json.loads(resp.read().decode("utf-8"))
-                if data.get("code") == "Ok" and data.get("routes"):
-                    primary_route = data["routes"][0]
-                    distance_meters = float(primary_route["distance"])
-                    duration_seconds = float(primary_route.get("duration", 0.0))
+    for url in routing_urls:
+        try:
+            req = urllib.request.Request(
+                url,
+                headers={
+                    "User-Agent": "TravelDestinationAlarm/2.0 (FastAPI Backend; GPS Navigation)",
+                    "Accept": "application/json",
+                },
+            )
+            with urllib.request.urlopen(req, timeout=3.0) as resp:
+                if resp.status == 200:
+                    data = json.loads(resp.read().decode("utf-8"))
+                    if data.get("code") == "Ok" and data.get("routes"):
+                        primary_route = data["routes"][0]
+                        distance_meters = float(primary_route["distance"])
+                        duration_seconds = float(primary_route.get("duration", 0.0))
 
-                    distance_km = round(distance_meters / 1000.0, 2)
-                    duration_min = round(duration_seconds / 60.0, 1)
-                    duration_text = format_duration(duration_min)
+                        distance_km = round(distance_meters / 1000.0, 2)
+                        duration_min = round(duration_seconds / 60.0, 1)
+                        duration_text = format_duration(duration_min)
 
-                    # Store in cache (prune if exceeds max entries)
-                    if len(_ROUTING_CACHE) >= _MAX_CACHE_ENTRIES:
-                        cutoff = now - _CACHE_TTL_SECONDS
-                        expired = [k for k, v in _ROUTING_CACHE.items() if v[0] < cutoff]
-                        for k in expired:
-                            _ROUTING_CACHE.pop(k, None)
+                        # Store in cache (prune if exceeds max entries)
                         if len(_ROUTING_CACHE) >= _MAX_CACHE_ENTRIES:
-                            oldest = sorted(_ROUTING_CACHE.keys(), key=lambda k: _ROUTING_CACHE[k][0])
-                            for k in oldest[: len(oldest) // 5]:
+                            cutoff = now - _CACHE_TTL_SECONDS
+                            expired = [k for k, v in _ROUTING_CACHE.items() if v[0] < cutoff]
+                            for k in expired:
                                 _ROUTING_CACHE.pop(k, None)
+                            if len(_ROUTING_CACHE) >= _MAX_CACHE_ENTRIES:
+                                oldest = sorted(_ROUTING_CACHE.keys(), key=lambda k: _ROUTING_CACHE[k][0])
+                                for k in oldest[: len(oldest) // 5]:
+                                    _ROUTING_CACHE.pop(k, None)
 
-                    _ROUTING_CACHE[cache_key] = (now, distance_km, duration_min, duration_text)
-                    return distance_km, duration_min, duration_text, "road"
-    except Exception as exc:
-        logging.warning("OSRM road routing unavailable, falling back to Haversine: %s", exc)
+                        _ROUTING_CACHE[cache_key] = (now, distance_km, duration_min, duration_text, "road")
+                        return distance_km, duration_min, duration_text, "road"
+        except Exception as exc:
+            logging.debug("OSRM routing endpoint %s error: %s", url, exc)
+            continue
 
-    # Fallback to straight-line spherical distance
+    # Fallback to straight-line spherical distance with estimated driving duration
     straight_dist = haversine_distance(lat1, lon1, lat2, lon2)
-    return straight_dist, None, None, "straight_line"
+    # Estimate driving road distance (~25% road curvature) and transit time (~40 km/h)
+    est_road_km = round(straight_dist * 1.25, 2)
+    est_duration_min = round(max(1.0, (est_road_km / 40.0) * 60.0), 1)
+    est_duration_text = format_duration(est_duration_min)
+    return straight_dist, est_duration_min, est_duration_text, "straight_line"
 
 
 # -----------------------------------------------------------------------------
@@ -267,12 +318,14 @@ def health_check():
 
 
 @app.post("/calculate-distance", response_model=DistanceResponse)
+@app.post("/api/calculate-distance", response_model=DistanceResponse)
 def calculate_distance(payload: DistanceRequest):
     """
     Main endpoint called by the React frontend while a trip is active.
     Receives current GPS coordinates, destination coordinates, and alert distance.
     Calculates actual road driving distance (matching Google Maps) and checks
     if an alert should trigger.
+    Optionally calculates distance travelled from start coordinates.
     """
     try:
         straight_km = haversine_distance(
@@ -297,6 +350,29 @@ def calculate_distance(payload: DistanceRequest):
         time_part = f" (~{duration_text})" if duration_text else ""
         route_label = "road driving distance" if route_type == "road" else "straight-line"
 
+        # Calculate travelled distance if starting coordinates are provided
+        travelled_km = 0.0
+        initial_total_km = distance_km
+        progress_pct = 0.0
+
+        if payload.start_latitude is not None and payload.start_longitude is not None:
+            travelled_km, _, _, _ = get_road_distance(
+                payload.start_latitude,
+                payload.start_longitude,
+                payload.current_latitude,
+                payload.current_longitude,
+            )
+            initial_total_km, _, _, _ = get_road_distance(
+                payload.start_latitude,
+                payload.start_longitude,
+                payload.destination_latitude,
+                payload.destination_longitude,
+            )
+            if initial_total_km > 0:
+                progress_pct = round(
+                    min(100.0, max(0.0, (travelled_km / initial_total_km) * 100.0)), 1
+                )
+
         if is_alert:
             message = (
                 f"WAKE UP! Your destination is approximately {distance_km} km away{time_part} "
@@ -316,12 +392,61 @@ def calculate_distance(payload: DistanceRequest):
             duration_min=duration_min,
             duration_text=duration_text,
             straight_line_km=straight_km,
+            travelled_distance_km=travelled_km,
+            initial_distance_km=initial_total_km,
+            progress_percentage=progress_pct,
         )
 
     except Exception as exc:
         raise HTTPException(
             status_code=500, detail=f"Failed to calculate distance: {str(exc)}"
         )
+
+
+@app.get("/calculate-distance", response_model=DistanceResponse)
+@app.get("/api/calculate-distance", response_model=DistanceResponse)
+def calculate_distance_get(
+    current_lat: Optional[float] = None,
+    current_lng: Optional[float] = None,
+    dest_lat: Optional[float] = None,
+    dest_lng: Optional[float] = None,
+    current_latitude: Optional[float] = None,
+    current_longitude: Optional[float] = None,
+    destination_latitude: Optional[float] = None,
+    destination_longitude: Optional[float] = None,
+    alert_distance: float = 3.0,
+    start_lat: Optional[float] = None,
+    start_lng: Optional[float] = None,
+    start_latitude: Optional[float] = None,
+    start_longitude: Optional[float] = None,
+):
+    """
+    GET endpoint to calculate user location to destination distance via query parameters.
+    Supports current_latitude / current_lat, destination_latitude / dest_lat, etc.
+    """
+    c_lat = current_latitude if current_latitude is not None else current_lat
+    c_lng = current_longitude if current_longitude is not None else current_lng
+    d_lat = destination_latitude if destination_latitude is not None else dest_lat
+    d_lng = destination_longitude if destination_longitude is not None else dest_lng
+    s_lat = start_latitude if start_latitude is not None else start_lat
+    s_lng = start_longitude if start_longitude is not None else start_lng
+
+    if c_lat is None or c_lng is None or d_lat is None or d_lng is None:
+        raise HTTPException(
+            status_code=422,
+            detail="Missing required coordinates: current_latitude, current_longitude, destination_latitude, destination_longitude",
+        )
+
+    payload = DistanceRequest(
+        current_latitude=c_lat,
+        current_longitude=c_lng,
+        destination_latitude=d_lat,
+        destination_longitude=d_lng,
+        alert_distance=alert_distance,
+        start_latitude=s_lat,
+        start_longitude=s_lng,
+    )
+    return calculate_distance(payload)
 
 
 # -----------------------------------------------------------------------------

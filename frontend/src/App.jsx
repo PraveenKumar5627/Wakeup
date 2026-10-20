@@ -81,6 +81,7 @@ export default function App() {
   const [isSimulating, setIsSimulating] = useState(false);
   const simOffsetRef = useRef(0.04);
   const simTimerRef = useRef(null);
+  const tripStartCoordsRef = useRef(null);
 
   // ── Screen Wake Lock ─────────────────────────────────────────────────────
   const wakeLockRef = useRef(null);
@@ -158,6 +159,11 @@ export default function App() {
       try {
         setGpsError(null);
 
+        // Record trip starting location on first valid GPS fix if not already set
+        if (!tripStartCoordsRef.current) {
+          tripStartCoordsRef.current = { lat, lng };
+        }
+
         // 1. INSTANT LOCAL HAVERSINE (0ms latency!)
         // Immediately show the actual distance with 0ms waiting!
         const straightDist = haversineDistanceKm(lat, lng, dest.lat, dest.lng);
@@ -170,10 +176,21 @@ export default function App() {
           destLat: dest.lat,
           destLng: dest.lng,
           alertDistance: thresholdKm,
+          startLat: tripStartCoordsRef.current?.lat,
+          startLng: tripStartCoordsRef.current?.lng,
         });
 
         const dist = result.distance_km;
         setRemainingDistanceKm(dist);
+
+        // Keep initial journey distance accurate (never smaller than distance to destination at start)
+        setInitialDistanceKm((prevInit) => {
+          if (!prevInit || prevInit < dist) {
+            return dist;
+          }
+          return prevInit;
+        });
+
         setRouteDetails({
           routeType: result.route_type || 'road',
           durationText: result.duration_text || (result.duration_min ? `${Math.round(result.duration_min)} min` : ''),
@@ -222,6 +239,11 @@ export default function App() {
 
     // Instant location resolution without blocking
     const loc = initialLoc || currentLocation;
+    if (loc?.lat && loc?.lng) {
+      tripStartCoordsRef.current = { lat: loc.lat, lng: loc.lng };
+    } else {
+      tripStartCoordsRef.current = null;
+    }
     const startLat = loc?.lat || dest.lat - 0.045;
     const startLng = loc?.lng || dest.lng - 0.045;
 
@@ -307,6 +329,7 @@ export default function App() {
     setIsAlarmActive(false);
     setIsSimulating(false);
     if (simTimerRef.current) clearInterval(simTimerRef.current);
+    tripStartCoordsRef.current = null;
 
     // Save trip to history
     const completedTrip = {
@@ -338,6 +361,7 @@ export default function App() {
     alarmAudio.stopAlarm();
     setIsTripActive(false);
     setIsAlarmActive(false);
+    tripStartCoordsRef.current = null;
     setCurrentScreen('destination');
     setActiveTab('map');
   };
@@ -392,6 +416,9 @@ export default function App() {
 
   // ── Select Past Trip to re-run ───────────────────────────────────────────
   const handleSelectRecentTrip = (trip) => {
+    if (!currentLocation) {
+      getCurrentLocation().catch(() => {});
+    }
     setDestination({
       name: trip.destination_name,
       city: trip.destination_city || 'Tamil Nadu',
@@ -415,6 +442,9 @@ export default function App() {
             userName={userName}
             recentTrips={pastTrips}
             onSetDestination={() => {
+              if (!currentLocation) {
+                getCurrentLocation().catch(() => {});
+              }
               setCurrentScreen('destination');
               setActiveTab('map');
             }}
@@ -441,7 +471,10 @@ export default function App() {
             initialDestination={destination}
             initialAlertDistanceKm={alertDistanceKm}
             currentLocation={currentLocation}
+            isFetchingLocation={isFetchingLocation}
+            locationPermStatus={locationPermStatus}
             onGetLocation={getCurrentLocation}
+            onRequestPermission={requestPermission}
             onBack={() => setCurrentScreen('home')}
             onStartTrip={handleStartTrip}
           />

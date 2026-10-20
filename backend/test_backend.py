@@ -250,4 +250,75 @@ def test_search_places_query():
         assert "name" in places[0]
 
 
+def test_calculate_distance_camel_case_and_aliases():
+    """Verify calculate-distance works with camelCase and short field aliases."""
+    payload = {
+        "currentLat": 13.0827,
+        "currentLng": 80.2707,
+        "destLat": 13.0784,
+        "destLng": 80.2608,
+    }
+    response = client.post("/calculate-distance", json=payload)
+    assert response.status_code == 200
+    data = response.json()
+    assert "distance_km" in data
+    assert data["distance_km"] > 0
+    assert "duration_min" in data
+    assert "route_type" in data
+
+
+def test_calculate_distance_travelled_calculation():
+    """Verify that start coordinates calculate travelled_distance_km and progress_percentage."""
+    payload = {
+        "start_latitude": 13.0000,
+        "start_longitude": 80.2000,
+        "current_latitude": 13.0500,
+        "current_longitude": 80.2400,
+        "destination_latitude": 13.0827,
+        "destination_longitude": 80.2707,
+        "alert_distance": 3.0,
+    }
+    response = client.post("/calculate-distance", json=payload)
+    assert response.status_code == 200
+    data = response.json()
+    assert "travelled_distance_km" in data
+    assert data["travelled_distance_km"] > 0
+    assert "initial_distance_km" in data
+    assert data["initial_distance_km"] > 0
+    assert "progress_percentage" in data
+    assert 0.0 <= data["progress_percentage"] <= 100.0
+
+
+def test_calculate_distance_api_alias():
+    """Verify POST /api/calculate-distance endpoint alias works identically."""
+    payload = {
+        "current_latitude": 13.0827,
+        "current_longitude": 80.2707,
+        "destination_latitude": 13.0784,
+        "destination_longitude": 80.2608,
+        "alert_distance": 5.0,
+    }
+    response = client.post("/api/calculate-distance", json=payload)
+    assert response.status_code == 200
+    data = response.json()
+    assert data["alert"] is True
+
+
+def test_calculate_distance_get_endpoint():
+    """Verify GET /calculate-distance works with query parameters."""
+    url = "/calculate-distance?current_lat=13.0827&current_lng=80.2707&dest_lat=13.0784&dest_lng=80.2608&alert_distance=5.0"
+    response = client.get(url)
+    assert response.status_code == 200
+    data = response.json()
+    assert "distance_km" in data
+    assert data["alert"] is True
+
+
+def test_calculate_distance_get_missing_coords():
+    """Verify GET /calculate-distance returns 422 when required coords are missing."""
+    response = client.get("/calculate-distance?current_lat=13.0827")
+    assert response.status_code == 422
+
+
+
 

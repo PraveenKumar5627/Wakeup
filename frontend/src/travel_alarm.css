@@ -1345,8 +1345,18 @@
   transition: all 0.15s ease;
 }
 
-.dest-detect-btn:hover {
+.dest-detect-btn:hover:not(:disabled) {
   background-color: #EFF6FF;
+}
+
+.dest-detect-btn:disabled,
+.dest-detect-btn-loading {
+  opacity: 0.85;
+  cursor: wait;
+  background-color: #F8FAFC;
+  border-style: solid;
+  border-color: #93C5FD;
+  color: #2563EB;
 }
 
 .dest-item-distance-pill {

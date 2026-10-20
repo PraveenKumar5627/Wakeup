@@ -46,8 +46,8 @@ export default function ActiveTripScreen({
   const destName = destination?.name || 'Munnar';
   const destCity = destination?.city || 'Devikulam, Kerala, India';
 
-  // Total journey distance established at start
-  const initDist = initialDistanceKm || (remainingDistanceKm ? remainingDistanceKm + 10 : 165);
+  // Total journey distance established at start (never less than remaining distance)
+  const initDist = Math.max(initialDistanceKm || 0, remainingDistanceKm || 0) || 165;
 
   // Present remaining distance (decreases as user gets closer: e.g. 165 -> 150 -> 100 -> 50 -> 0)
   const remDist = remainingDistanceKm !== null ? remainingDistanceKm : initDist;
