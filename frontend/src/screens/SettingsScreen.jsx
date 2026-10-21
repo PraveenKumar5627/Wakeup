@@ -20,6 +20,8 @@ import {
   FolderOpen,
   Upload,
   Trash2,
+  Sun,
+  Moon,
 } from 'lucide-react';
 import { alarmAudio } from '../utils/audioAlarm';
 import {
@@ -38,6 +40,9 @@ export default function SettingsScreen({
   isTripActive = false,
   showBottomNav = true,
   onBack,
+  theme = 'light',
+  onToggleTheme,
+  onSetTheme,
 }) {
   const [selectedTone, setSelectedTone] = useState(
     () => localStorage.getItem('arrivo_setting_tone') || 'transit'
@@ -153,18 +158,35 @@ export default function SettingsScreen({
       <StatusBar theme="light" />
 
       {/* Header */}
-      <header className="screen-header">
-        {onBack && (
+      <header className="screen-header" style={{ justifyContent: 'space-between' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          {onBack && (
+            <button
+              type="button"
+              className="header-back-btn"
+              onClick={onBack}
+              aria-label="Back"
+            >
+              <ArrowLeft size={20} />
+            </button>
+          )}
+          <h2 className="header-title">Settings</h2>
+        </div>
+        {onToggleTheme && (
           <button
             type="button"
-            className="header-back-btn"
-            onClick={onBack}
-            aria-label="Back"
+            className="header-icon-btn theme-toggle-btn"
+            onClick={onToggleTheme}
+            title={theme === 'dark' ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
+            aria-label="Toggle theme"
           >
-            <ArrowLeft size={20} />
+            {theme === 'dark' ? (
+              <Sun size={20} className="theme-icon-sun" />
+            ) : (
+              <Moon size={20} className="theme-icon-moon" />
+            )}
           </button>
         )}
-        <h2 className="header-title">Settings</h2>
       </header>
 
       <main className="settings-scroll-content">
@@ -449,6 +471,41 @@ export default function SettingsScreen({
               </button>
             </div>
           </div>
+
+          {/* Appearance / Theme */}
+          <div className="settings-row-item">
+            <div className="settings-row-left">
+              {theme === 'dark' ? (
+                <Moon size={18} className="text-indigo-400" />
+              ) : (
+                <Sun size={18} className="text-amber-500" />
+              )}
+              <div>
+                <div className="row-main-label">Theme Mode</div>
+                <div className="row-sub-label">Switch between Light and Dark interface</div>
+              </div>
+            </div>
+            <div className="unit-toggle-pill theme-mode-pill">
+              <button
+                type="button"
+                className={`unit-btn ${theme === 'light' ? 'unit-active' : ''}`}
+                onClick={() => (onSetTheme ? onSetTheme('light') : onToggleTheme())}
+                id="btn-theme-light"
+              >
+                <Sun size={13} style={{ marginRight: '4px', verticalAlign: '-1px' }} />
+                Light
+              </button>
+              <button
+                type="button"
+                className={`unit-btn ${theme === 'dark' ? 'unit-active' : ''}`}
+                onClick={() => (onSetTheme ? onSetTheme('dark') : onToggleTheme())}
+                id="btn-theme-dark"
+              >
+                <Moon size={13} style={{ marginRight: '4px', verticalAlign: '-1px' }} />
+                Dark
+              </button>
+            </div>
+          </div>
         </section>
 
         {/* About & Info */}
@@ -458,7 +515,7 @@ export default function SettingsScreen({
             <div className="settings-row-left">
               <Info size={18} className="text-slate-600" />
               <div>
-                <div className="row-main-label">TravelAlarm / Arrivo</div>
+                <div className="row-main-label">TravelAlarm / Arraivo</div>
                 <div className="row-sub-label">Version 2.0.0 • Mobile Release</div>
               </div>
             </div>

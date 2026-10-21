@@ -10,6 +10,8 @@ import {
   Calendar,
   Bell,
   Plus,
+  Sun,
+  Moon,
 } from 'lucide-react';
 
 export default function PastTripsScreen({
@@ -21,6 +23,8 @@ export default function PastTripsScreen({
   onTabChange,
   isTripActive = false,
   showBottomNav = true,
+  theme = 'light',
+  onToggleTheme,
 }) {
   const [searchQuery, setSearchQuery] = useState('');
   const [tripToDelete, setTripToDelete] = useState(null);
@@ -39,18 +43,35 @@ export default function PastTripsScreen({
       <StatusBar theme="light" />
 
       {/* Top Header */}
-      <header className="screen-header">
-        {onBack && (
+      <header className="screen-header" style={{ justifyContent: 'space-between' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          {onBack && (
+            <button
+              type="button"
+              className="header-back-btn"
+              onClick={onBack}
+              aria-label="Back"
+            >
+              <ArrowLeft size={20} />
+            </button>
+          )}
+          <h2 className="header-title">Past Trips</h2>
+        </div>
+        {onToggleTheme && (
           <button
             type="button"
-            className="header-back-btn"
-            onClick={onBack}
-            aria-label="Back"
+            className="header-icon-btn theme-toggle-btn"
+            onClick={onToggleTheme}
+            title={theme === 'dark' ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
+            aria-label="Toggle theme"
           >
-            <ArrowLeft size={20} />
+            {theme === 'dark' ? (
+              <Sun size={20} className="theme-icon-sun" />
+            ) : (
+              <Moon size={20} className="theme-icon-moon" />
+            )}
           </button>
         )}
-        <h2 className="header-title">Past Trips</h2>
       </header>
 
       {/* Search Filter */}

@@ -41,6 +41,40 @@
   --ta-shadow-lg: 0 10px 25px rgba(0, 0, 0, 0.08);
 }
 
+:root[data-theme="dark"],
+[data-theme="dark"],
+.theme-dark {
+  --ta-blue: #3B82F6;
+  --ta-blue-hover: #60A5FA;
+  --ta-blue-light: rgba(59, 130, 246, 0.16);
+  --ta-blue-border: #1E3A8A;
+  
+  --ta-navy: #F8FAFC;
+  --ta-navy-card: #131D31;
+  --ta-navy-dark: #070B14;
+  
+  --ta-green-travel: #10B981;
+  --ta-green-check: #10B981;
+  --ta-green-light: rgba(16, 185, 129, 0.16);
+  
+  --ta-amber-bell: #FBBF24;
+  --ta-amber-light: rgba(245, 158, 11, 0.16);
+  --ta-amber-glow: rgba(251, 191, 36, 0.35);
+
+  --ta-bg-cream: #0B1120;
+  --ta-bg-card: #131D31;
+  --ta-border: #1E293B;
+  --ta-border-light: #162032;
+
+  --ta-text-main: #F8FAFC;
+  --ta-text-muted: #94A3B8;
+  --ta-text-dim: #64748B;
+
+  --ta-shadow-sm: 0 2px 6px rgba(0, 0, 0, 0.35);
+  --ta-shadow-md: 0 6px 18px rgba(0, 0, 0, 0.45);
+  --ta-shadow-lg: 0 12px 30px rgba(0, 0, 0, 0.55);
+}
+
 /* Master Responsive Device Stage */
 .travel-alarm-viewport-wrapper {
   min-height: 100vh;
@@ -197,97 +231,52 @@
    -------------------------------------------------------------------------- */
 .screen-splash {
   flex: 1;
-  background-color: #060911;
-  color: #FFFFFF;
+  height: 100%;
+  min-height: 100%;
+  box-sizing: border-box;
+  overflow: hidden;
+  background-color: #000000;
   display: flex;
   flex-direction: column;
-  justify-content: space-between;
-  padding: 0 20px 40px;
+  padding: 0;
+  margin: 0;
   cursor: pointer;
 }
 
-.splash-center {
+.splash-pure-content {
   flex: 1;
+  width: 100%;
+  height: 100%;
   display: flex;
-  flex-direction: column;
   align-items: center;
   justify-content: center;
-  text-align: center;
-  gap: 18px;
+  background-color: #000000;
+  overflow: hidden;
+  padding: 0;
+  margin: 0;
 }
 
-.splash-logo-card {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 4px;
+.splash-pure-img {
+  width: 100%;
+  height: 100%;
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  display: block;
+  user-select: none;
+  -webkit-user-drag: none;
+  animation: splash-pure-fadein 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
-.splash-logo-art {
-  display: flex;
-  align-items: baseline;
-  position: relative;
-}
-
-.logo-letter {
-  font-size: 52px;
-  font-weight: 900;
-  color: #FFFFFF;
-  letter-spacing: -2px;
-}
-
-.logo-word {
-  font-size: 44px;
-  font-weight: 800;
-  color: #FFFFFF;
-  letter-spacing: -1.5px;
-}
-
-.logo-sunrise-arc {
-  position: absolute;
-  top: -6px;
-  right: -8px;
-  width: 22px;
-  height: 22px;
-  border-radius: 50%;
-  background: radial-gradient(circle, #F59E0B 20%, #EF4444 80%);
-  box-shadow: 0 0 16px #F59E0B;
-}
-
-.splash-brand-sub {
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 3.5px;
-  color: #94A3B8;
-  margin-top: 4px;
-}
-
-.splash-tagline {
-  font-size: 14px;
-  color: #94A3B8;
-  max-width: 260px;
-  line-height: 1.45;
-}
-
-.splash-loader-dots {
-  display: flex;
-  justify-content: center;
-  gap: 6px;
-}
-
-.splash-loader-dots .dot {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background-color: #38BDF8;
-  animation: pulse-dot 1.2s infinite ease-in-out;
-}
-.splash-loader-dots .dot-2 { animation-delay: 0.2s; }
-.splash-loader-dots .dot-3 { animation-delay: 0.4s; }
-
-@keyframes pulse-dot {
-  0%, 80%, 100% { transform: scale(0.6); opacity: 0.3; }
-  40% { transform: scale(1.1); opacity: 1; }
+@keyframes splash-pure-fadein {
+  0% {
+    opacity: 0;
+    transform: scale(0.97);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
 }
 
 /* Onboarding */
@@ -3396,3 +3385,1303 @@ input:checked + .toggle-slider:before {
   font-weight: 700;
   cursor: pointer;
 }
+
+/* ==========================================================================
+   Comprehensive Dark Mode Theme System
+   Applies across all 10 Screens, Components, Navbars, Cards, Modals, and Maps
+   ========================================================================== */
+
+/* 1. Device Viewport Wrapper & Phone Frame */
+.travel-alarm-viewport-wrapper.theme-dark,
+[data-theme="dark"].travel-alarm-viewport-wrapper,
+[data-theme="dark"] .travel-alarm-viewport-wrapper {
+  background: #030712;
+}
+
+@media (min-width: 641px) {
+  .travel-alarm-viewport-wrapper.theme-dark,
+  [data-theme="dark"].travel-alarm-viewport-wrapper,
+  [data-theme="dark"] .travel-alarm-viewport-wrapper {
+    background: radial-gradient(circle at 50% 20%, #0F172A 0%, #020617 100%);
+  }
+}
+
+.travel-alarm-phone-frame.theme-dark,
+[data-theme="dark"] .travel-alarm-phone-frame,
+[data-theme="dark"].travel-alarm-phone-frame {
+  background-color: #0B1120;
+  border-color: #1E293B;
+  box-shadow: 0 25px 70px rgba(0, 0, 0, 0.8), 0 0 0 1px rgba(255, 255, 255, 0.08);
+}
+
+/* 2. Common Screen Containers & Headers */
+[data-theme="dark"] .screen-container,
+.theme-dark .screen-container {
+  background-color: #0B1120;
+  color: #F8FAFC;
+}
+
+[data-theme="dark"] .screen-header,
+.theme-dark .screen-header {
+  border-bottom: 1px solid #1E293B;
+  background-color: transparent;
+}
+
+[data-theme="dark"] .header-title,
+.theme-dark .header-title {
+  color: #F8FAFC;
+}
+
+[data-theme="dark"] .header-back-btn,
+.theme-dark .header-back-btn {
+  background-color: #131D31;
+  border-color: #1E293B;
+  color: #F8FAFC;
+}
+
+[data-theme="dark"] .header-back-btn:hover,
+.theme-dark .header-back-btn:hover {
+  background-color: #1E293B;
+  color: #60A5FA;
+}
+
+[data-theme="dark"] .header-icon-btn,
+.theme-dark .header-icon-btn {
+  color: #F8FAFC;
+}
+
+[data-theme="dark"] .header-icon-btn:hover,
+.theme-dark .header-icon-btn:hover {
+  background-color: rgba(255, 255, 255, 0.08);
+}
+
+[data-theme="dark"] .header-icon-btn .text-slate-700,
+.theme-dark .header-icon-btn .text-slate-700 {
+  color: #F8FAFC !important;
+}
+
+[data-theme="dark"] .theme-icon-sun,
+.theme-dark .theme-icon-sun {
+  color: #FBBF24 !important;
+}
+
+[data-theme="dark"] .theme-icon-moon,
+.theme-dark .theme-icon-moon {
+  color: #94A3B8;
+}
+
+/* 3. Screen 1: Splash & Onboarding */
+[data-theme="dark"] .screen-onboarding,
+.theme-dark .screen-onboarding {
+  background-color: #0B1120;
+}
+
+[data-theme="dark"] .onboarding-title,
+.theme-dark .onboarding-title {
+  color: #F8FAFC;
+}
+
+[data-theme="dark"] .onboarding-desc,
+.theme-dark .onboarding-desc {
+  color: #94A3B8;
+}
+
+[data-theme="dark"] .onboarding-dot,
+.theme-dark .onboarding-dot {
+  background-color: #334155;
+}
+
+[data-theme="dark"] .onboarding-dot.active,
+.theme-dark .onboarding-dot.active {
+  background-color: #3B82F6;
+}
+
+[data-theme="dark"] .onboarding-skip-btn,
+.theme-dark .onboarding-skip-btn {
+  color: #94A3B8;
+}
+
+/* 4. Screen 2: Home Dashboard */
+[data-theme="dark"] .screen-home,
+.theme-dark .screen-home {
+  background-color: #0B1120;
+}
+
+[data-theme="dark"] .home-brand-title,
+.theme-dark .home-brand-title {
+  color: #F8FAFC;
+}
+
+[data-theme="dark"] .greeting-heading,
+.theme-dark .greeting-heading {
+  color: #F8FAFC;
+}
+
+[data-theme="dark"] .greeting-name,
+.theme-dark .greeting-name {
+  color: #60A5FA;
+}
+
+[data-theme="dark"] .greeting-sub,
+.theme-dark .greeting-sub {
+  color: #94A3B8;
+}
+
+[data-theme="dark"] .hero-destination-card,
+.theme-dark .hero-destination-card {
+  box-shadow: 0 10px 24px rgba(30, 107, 255, 0.4);
+}
+
+[data-theme="dark"] .active-trip-banner,
+.theme-dark .active-trip-banner {
+  background: rgba(6, 78, 59, 0.55);
+  border-color: #059669;
+}
+
+[data-theme="dark"] .active-badge,
+.theme-dark .active-badge {
+  color: #34D399;
+}
+
+[data-theme="dark"] .active-dest-name,
+.theme-dark .active-dest-name {
+  color: #ECFDF5;
+}
+
+[data-theme="dark"] .active-dist-sub,
+.theme-dark .active-dist-sub {
+  color: #A7F3D0;
+}
+
+[data-theme="dark"] .section-title,
+.theme-dark .section-title {
+  color: #F8FAFC;
+}
+
+[data-theme="dark"] .section-link-btn,
+.theme-dark .section-link-btn {
+  color: #60A5FA;
+}
+
+[data-theme="dark"] .recent-trip-card,
+.theme-dark .recent-trip-card {
+  background-color: #131D31;
+  border-color: #1E293B;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
+}
+
+[data-theme="dark"] .recent-trip-card:hover,
+.theme-dark .recent-trip-card:hover {
+  background-color: #1A263D;
+  border-color: #2E3E5B;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.45);
+}
+
+[data-theme="dark"] .recent-trip-dest,
+.theme-dark .recent-trip-dest {
+  color: #F8FAFC;
+}
+
+[data-theme="dark"] .recent-trip-time,
+.theme-dark .recent-trip-time {
+  color: #94A3B8;
+}
+
+[data-theme="dark"] .recent-trip-pin,
+.theme-dark .recent-trip-pin {
+  background-color: rgba(59, 130, 246, 0.2);
+  color: #60A5FA;
+}
+
+[data-theme="dark"] .recent-trip-bell,
+.theme-dark .recent-trip-bell {
+  background-color: rgba(245, 158, 11, 0.2);
+  color: #FBBF24;
+}
+
+/* 5. Screen 3 & 4: Select Destination & Setup */
+[data-theme="dark"] .screen-select-dest,
+.theme-dark .screen-select-dest {
+  background-color: #0B1120;
+}
+
+[data-theme="dark"] .dest-search-input-box,
+.theme-dark .dest-search-input-box {
+  background-color: #131D31;
+  border-color: #1E293B;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4);
+}
+
+[data-theme="dark"] .dest-search-input,
+.theme-dark .dest-search-input {
+  color: #F8FAFC;
+}
+
+[data-theme="dark"] .dest-search-input::placeholder,
+.theme-dark .dest-search-input::placeholder {
+  color: #64748B;
+}
+
+[data-theme="dark"] .search-submit-icon-btn,
+.theme-dark .search-submit-icon-btn {
+  color: #60A5FA;
+}
+
+[data-theme="dark"] .search-clear-btn,
+.theme-dark .search-clear-btn {
+  color: #64748B;
+}
+
+[data-theme="dark"] .dest-suggestions-dropdown,
+.theme-dark .dest-suggestions-dropdown {
+  background-color: #131D31;
+  border-color: #1E293B;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.6);
+}
+
+[data-theme="dark"] .dest-suggestion-section-header,
+.theme-dark .dest-suggestion-section-header {
+  background-color: #0F172A;
+  color: #93C5FD;
+  border-color: #1E293B;
+}
+
+[data-theme="dark"] .dest-suggestion-item,
+.theme-dark .dest-suggestion-item {
+  border-bottom-color: #1E293B;
+}
+
+[data-theme="dark"] .dest-suggestion-item:hover,
+.theme-dark .dest-suggestion-item:hover {
+  background-color: #1A263D;
+}
+
+[data-theme="dark"] .dest-suggestion-name,
+.theme-dark .dest-suggestion-name {
+  color: #F8FAFC;
+}
+
+[data-theme="dark"] .dest-suggestion-city,
+.theme-dark .dest-suggestion-city {
+  color: #94A3B8;
+}
+
+[data-theme="dark"] .dest-item-distance-pill,
+.theme-dark .dest-item-distance-pill {
+  background-color: rgba(59, 130, 246, 0.2);
+  color: #93C5FD;
+  border-color: #1E3A8A;
+}
+
+[data-theme="dark"] .dest-suggestion-loading-row,
+[data-theme="dark"] .dest-suggestion-loading-more,
+.theme-dark .dest-suggestion-loading-row,
+.theme-dark .dest-suggestion-loading-more {
+  background-color: #0F172A;
+  color: #94A3B8;
+  border-color: #1E293B;
+}
+
+[data-theme="dark"] .btn-google-maps-link,
+.theme-dark .btn-google-maps-link {
+  background-color: #131D31;
+  border-color: #1E293B;
+  color: #93C5FD;
+}
+
+[data-theme="dark"] .btn-google-maps-link:hover,
+.theme-dark .btn-google-maps-link:hover {
+  background-color: #1A263D;
+  border-color: #3B82F6;
+  color: #60A5FA;
+}
+
+[data-theme="dark"] .recent-header-text,
+.theme-dark .recent-header-text {
+  color: #94A3B8;
+}
+
+[data-theme="dark"] .recent-clear-btn,
+.theme-dark .recent-clear-btn {
+  color: #60A5FA;
+}
+
+[data-theme="dark"] .recent-clear-btn:hover,
+.theme-dark .recent-clear-btn:hover {
+  background-color: rgba(59, 130, 246, 0.15);
+}
+
+[data-theme="dark"] .quick-chip,
+.theme-dark .quick-chip {
+  background-color: #131D31;
+  border-color: #1E293B;
+  color: #E2E8F0;
+}
+
+[data-theme="dark"] .quick-chip:hover,
+.theme-dark .quick-chip:hover {
+  background-color: #1A263D;
+  border-color: #334155;
+  color: #FFFFFF;
+}
+
+[data-theme="dark"] .quick-chip.recent-search-chip,
+.theme-dark .quick-chip.recent-search-chip {
+  background-color: #131D31;
+}
+
+[data-theme="dark"] .quick-chip.chip-active,
+.theme-dark .quick-chip.chip-active {
+  background-color: #2563EB;
+  color: #FFFFFF;
+  border-color: #2563EB;
+}
+
+[data-theme="dark"] .interactive-map-wrapper,
+.theme-dark .interactive-map-wrapper {
+  border-color: #1E293B;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+}
+
+[data-theme="dark"] .google-map-type-toggle,
+.theme-dark .google-map-type-toggle {
+  background: #131D31;
+  border-color: #1E293B;
+}
+
+[data-theme="dark"] .google-map-type-btn,
+.theme-dark .google-map-type-btn {
+  background: #131D31;
+  color: #94A3B8;
+}
+
+[data-theme="dark"] .google-map-type-btn.active,
+.theme-dark .google-map-type-btn.active {
+  background: #2563EB;
+  color: #FFFFFF;
+}
+
+[data-theme="dark"] .google-watermark-badge,
+.theme-dark .google-watermark-badge {
+  background: rgba(19, 29, 49, 0.92);
+  border: 1px solid #1E293B;
+}
+
+[data-theme="dark"] .google-watermark-badge .g-sub,
+.theme-dark .google-watermark-badge .g-sub {
+  color: #94A3B8;
+}
+
+[data-theme="dark"] .google-ctrl-btn,
+.theme-dark .google-ctrl-btn {
+  background: #131D31;
+  border-color: #1E293B;
+  color: #E2E8F0;
+}
+
+[data-theme="dark"] .google-ctrl-btn:hover,
+.theme-dark .google-ctrl-btn:hover {
+  background-color: #1A263D;
+}
+
+[data-theme="dark"] .google-dest-pin-label,
+.theme-dark .google-dest-pin-label {
+  background: #1E293B;
+  color: #F8FAFC;
+  border-color: #334155;
+}
+
+[data-theme="dark"] .map-floating-btn,
+.theme-dark .map-floating-btn {
+  background-color: #131D31;
+  border-color: #1E293B;
+  color: #F8FAFC;
+}
+
+[data-theme="dark"] .destination-preview-card,
+.theme-dark .destination-preview-card {
+  background-color: #131D31;
+  border-color: #1E293B;
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.4);
+}
+
+[data-theme="dark"] .dest-preview-pin,
+.theme-dark .dest-preview-pin {
+  background-color: rgba(59, 130, 246, 0.2);
+  color: #60A5FA;
+}
+
+[data-theme="dark"] .dest-preview-name,
+.theme-dark .dest-preview-name {
+  color: #F8FAFC;
+}
+
+[data-theme="dark"] .dest-preview-city,
+.theme-dark .dest-preview-city {
+  color: #94A3B8;
+}
+
+[data-theme="dark"] .dest-preview-distance-card,
+.theme-dark .dest-preview-distance-card {
+  background: linear-gradient(135deg, rgba(30, 58, 138, 0.35) 0%, rgba(15, 23, 42, 0.6) 100%);
+  border-color: #1E3A8A;
+}
+
+[data-theme="dark"] .dest-preview-dist-val,
+.theme-dark .dest-preview-dist-val {
+  color: #93C5FD;
+}
+
+[data-theme="dark"] .dest-preview-dist-badge,
+.theme-dark .dest-preview-dist-badge {
+  background-color: rgba(37, 99, 235, 0.35);
+  color: #93C5FD;
+}
+
+[data-theme="dark"] .dest-preview-dist-sub,
+.theme-dark .dest-preview-dist-sub {
+  color: #94A3B8;
+}
+
+[data-theme="dark"] .dest-detect-btn,
+.theme-dark .dest-detect-btn {
+  background-color: #0F172A;
+  border-color: #2563EB;
+  color: #60A5FA;
+}
+
+[data-theme="dark"] .dest-detect-btn:hover:not(:disabled),
+.theme-dark .dest-detect-btn:hover:not(:disabled) {
+  background-color: #1E293B;
+}
+
+[data-theme="dark"] .alarm-setup-title,
+.theme-dark .alarm-setup-title {
+  color: #F8FAFC;
+}
+
+[data-theme="dark"] .alarm-setup-subtitle,
+.theme-dark .alarm-setup-subtitle {
+  color: #94A3B8;
+}
+
+[data-theme="dark"] .alarm-radio-row,
+.theme-dark .alarm-radio-row {
+  background-color: #131D31;
+  border-color: #1E293B;
+}
+
+[data-theme="dark"] .alarm-radio-row.radio-selected,
+.theme-dark .alarm-radio-row.radio-selected {
+  background-color: rgba(37, 99, 235, 0.2);
+  border-color: #3B82F6;
+}
+
+[data-theme="dark"] .radio-circle,
+.theme-dark .radio-circle {
+  border-color: #64748B;
+}
+
+[data-theme="dark"] .radio-label,
+.theme-dark .radio-label {
+  color: #F8FAFC;
+}
+
+[data-theme="dark"] .custom-distance-field,
+.theme-dark .custom-distance-field {
+  background-color: #0F172A;
+  border-color: #334155;
+  color: #F8FAFC;
+}
+
+[data-theme="dark"] .custom-distance-unit,
+.theme-dark .custom-distance-unit {
+  color: #94A3B8;
+}
+
+/* 6. Screen 5: Location Permission */
+[data-theme="dark"] .screen-permission,
+.theme-dark .screen-permission {
+  background-color: #0B1120;
+}
+
+[data-theme="dark"] .permission-heading,
+.theme-dark .permission-heading {
+  color: #F8FAFC;
+}
+
+[data-theme="dark"] .permission-subheading,
+.theme-dark .permission-subheading {
+  color: #94A3B8;
+}
+
+[data-theme="dark"] .benefit-row-card,
+.theme-dark .benefit-row-card {
+  background-color: #131D31;
+  border-color: #1E293B;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
+}
+
+[data-theme="dark"] .benefit-title,
+.theme-dark .benefit-title {
+  color: #F8FAFC;
+}
+
+[data-theme="dark"] .benefit-desc,
+.theme-dark .benefit-desc {
+  color: #94A3B8;
+}
+
+[data-theme="dark"] .btn-secondary-link,
+.theme-dark .btn-secondary-link {
+  color: #94A3B8;
+}
+
+[data-theme="dark"] .btn-secondary-link:hover,
+.theme-dark .btn-secondary-link:hover {
+  color: #F8FAFC;
+}
+
+/* 7. Screen 6: Active Trip Tracking */
+[data-theme="dark"] .arraivo-white-blue-screen,
+[data-theme="dark"] .arrivo-active-trip-screen,
+.theme-dark .arraivo-white-blue-screen,
+.theme-dark .arrivo-active-trip-screen {
+  background-color: #0B1120;
+  color: #F8FAFC;
+}
+
+[data-theme="dark"] .arraivo-app-name,
+[data-theme="dark"] .arrivo-app-name,
+.theme-dark .arraivo-app-name,
+.theme-dark .arrivo-app-name {
+  color: #F8FAFC;
+}
+
+[data-theme="dark"] .arraivo-app-motto,
+[data-theme="dark"] .arrivo-app-motto,
+.theme-dark .arraivo-app-motto,
+.theme-dark .arrivo-app-motto {
+  color: #94A3B8;
+}
+
+[data-theme="dark"] .arraivo-logo-circle,
+[data-theme="dark"] .arrivo-emblem-icon,
+.theme-dark .arraivo-logo-circle,
+.theme-dark .arrivo-emblem-icon {
+  background: #131D31;
+  border-color: #1E3A8A;
+}
+
+[data-theme="dark"] .arraivo-alarm-badge-pill,
+[data-theme="dark"] .arrivo-alarm-badge-pill,
+.theme-dark .arraivo-alarm-badge-pill,
+.theme-dark .arrivo-alarm-badge-pill {
+  background: rgba(37, 99, 235, 0.2);
+  border-color: #1E3A8A;
+  color: #93C5FD;
+}
+
+[data-theme="dark"] .arraivo-top-settings-btn,
+[data-theme="dark"] .arrivo-top-settings-btn,
+.theme-dark .arraivo-top-settings-btn,
+.theme-dark .arrivo-top-settings-btn {
+  background: #131D31;
+  border-color: #1E293B;
+  color: #F8FAFC;
+}
+
+[data-theme="dark"] .arraivo-top-settings-btn:hover,
+[data-theme="dark"] .arrivo-top-settings-btn:hover,
+.theme-dark .arraivo-top-settings-btn:hover,
+.theme-dark .arrivo-top-settings-btn:hover {
+  background: #1E293B;
+  color: #60A5FA;
+}
+
+[data-theme="dark"] .arraivo-dest-card-clean,
+[data-theme="dark"] .arrivo-destination-card,
+.theme-dark .arraivo-dest-card-clean,
+.theme-dark .arrivo-destination-card {
+  background: #131D31;
+  border-color: #1E293B;
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.4);
+}
+
+[data-theme="dark"] .dest-pin-badge,
+.theme-dark .dest-pin-badge {
+  background: rgba(37, 99, 235, 0.2);
+  border-color: #1E3A8A;
+}
+
+[data-theme="dark"] .dest-title-text,
+.theme-dark .dest-title-text {
+  color: #F8FAFC;
+}
+
+[data-theme="dark"] .dest-location-sub,
+.theme-dark .dest-location-sub {
+  color: #94A3B8;
+}
+
+[data-theme="dark"] .dest-chevron-box,
+[data-theme="dark"] .arrivo-dest-chevron-box,
+.theme-dark .dest-chevron-box,
+.theme-dark .arrivo-dest-chevron-box {
+  background: #1E293B;
+  color: #94A3B8;
+}
+
+[data-theme="dark"] .arraivo-metrics-panel,
+[data-theme="dark"] .arrivo-metrics-panel,
+.theme-dark .arraivo-metrics-panel,
+.theme-dark .arrivo-metrics-panel {
+  background: #131D31;
+  border-color: #1E293B;
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.4);
+}
+
+[data-theme="dark"] .metric-number-val,
+.theme-dark .metric-number-val {
+  color: #F8FAFC;
+}
+
+[data-theme="dark"] .metric-caption-label,
+.theme-dark .metric-caption-label {
+  color: #94A3B8;
+}
+
+[data-theme="dark"] .metric-icon-circle,
+.theme-dark .metric-icon-circle {
+  background: rgba(59, 130, 246, 0.2);
+}
+
+[data-theme="dark"] .metrics-column-separator,
+.theme-dark .metrics-column-separator {
+  background-color: #1E293B;
+}
+
+[data-theme="dark"] .metric-value-large,
+.theme-dark .metric-value-large {
+  color: #F8FAFC;
+}
+
+[data-theme="dark"] .metric-unit,
+.theme-dark .metric-unit {
+  color: #60A5FA;
+}
+
+[data-theme="dark"] .metric-label-clean,
+.theme-dark .metric-label-clean {
+  color: #94A3B8;
+}
+
+[data-theme="dark"] .metric-divider-line,
+.theme-dark .metric-divider-line {
+  background-color: #1E293B;
+}
+
+[data-theme="dark"] .arraivo-status-card,
+[data-theme="dark"] .arrivo-dashboard-gauge-card,
+.theme-dark .arraivo-status-card,
+.theme-dark .arrivo-dashboard-gauge-card {
+  background: #131D31;
+  border-color: #1E293B;
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.4);
+}
+
+[data-theme="dark"] .status-header-title,
+.theme-dark .status-header-title {
+  color: #F8FAFC;
+}
+
+[data-theme="dark"] .gauge-circle-track,
+.theme-dark .gauge-circle-track {
+  stroke: #1E293B;
+}
+
+[data-theme="dark"] .gauge-center-km,
+.theme-dark .gauge-center-km {
+  color: #F8FAFC;
+}
+
+[data-theme="dark"] .gauge-center-sub,
+.theme-dark .gauge-center-sub {
+  color: #94A3B8;
+}
+
+[data-theme="dark"] .transit-vehicle-badge,
+.theme-dark .transit-vehicle-badge {
+  background: rgba(37, 99, 235, 0.2);
+  border-color: #1E3A8A;
+}
+
+[data-theme="dark"] .traveling-to-label,
+.theme-dark .traveling-to-label {
+  color: #94A3B8;
+}
+
+[data-theme="dark"] .traveling-dest-title,
+.theme-dark .traveling-dest-title {
+  color: #F8FAFC;
+}
+
+[data-theme="dark"] .status-live-pill,
+.theme-dark .status-live-pill {
+  background: rgba(16, 185, 129, 0.2);
+  border-color: #059669;
+  color: #34D399;
+}
+
+[data-theme="dark"] .status-bar-track,
+.theme-dark .status-bar-track {
+  background-color: #1E293B;
+}
+
+[data-theme="dark"] .status-subtext-clean,
+.theme-dark .status-subtext-clean {
+  color: #94A3B8;
+}
+
+[data-theme="dark"] .last-update-row,
+.theme-dark .last-update-row {
+  color: #64748B;
+}
+
+[data-theme="dark"] .arraivo-quote-card,
+[data-theme="dark"] .arrivo-quote-card,
+.theme-dark .arraivo-quote-card,
+.theme-dark .arrivo-quote-card {
+  background: rgba(30, 58, 138, 0.2);
+  border-color: #1E3A8A;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+}
+
+[data-theme="dark"] .quote-body-text,
+.theme-dark .quote-body-text {
+  color: #93C5FD;
+}
+
+[data-theme="dark"] .quote-text,
+.theme-dark .quote-text {
+  color: #93C5FD;
+}
+
+[data-theme="dark"] .neon-keep-going-badge,
+.theme-dark .neon-keep-going-badge {
+  background: rgba(37, 99, 235, 0.25);
+  border-color: #3B82F6;
+}
+
+[data-theme="dark"] .keep-going-text,
+.theme-dark .keep-going-text {
+  color: #93C5FD;
+}
+
+[data-theme="dark"] .btn-arraivo-snooze,
+[data-theme="dark"] .btn-arrivo-snooze,
+.theme-dark .btn-arraivo-snooze,
+.theme-dark .btn-arrivo-snooze {
+  background: #131D31;
+  color: #F8FAFC;
+  border-color: #334155;
+}
+
+[data-theme="dark"] .btn-arraivo-snooze:hover,
+[data-theme="dark"] .btn-arrivo-snooze:hover,
+.theme-dark .btn-arraivo-snooze:hover,
+.theme-dark .btn-arrivo-snooze:hover {
+  border-color: #3B82F6;
+  color: #60A5FA;
+  background: rgba(59, 130, 246, 0.16);
+}
+
+[data-theme="dark"] .secondary-link-btn,
+.theme-dark .secondary-link-btn {
+  color: #94A3B8;
+}
+
+[data-theme="dark"] .secondary-link-btn:hover,
+.theme-dark .secondary-link-btn:hover {
+  color: #60A5FA;
+  background: rgba(59, 130, 246, 0.16);
+}
+
+[data-theme="dark"] .link-btn-clean,
+.theme-dark .link-btn-clean {
+  color: #94A3B8;
+}
+
+[data-theme="dark"] .link-btn-clean:hover,
+.theme-dark .link-btn-clean:hover {
+  color: #60A5FA;
+}
+
+[data-theme="dark"] .arraivo-map-modal,
+[data-theme="dark"] .arrivo-map-modal,
+.theme-dark .arraivo-map-modal,
+.theme-dark .arrivo-map-modal {
+  background: #131D31;
+  border-color: #1E293B;
+  color: #F8FAFC;
+}
+
+[data-theme="dark"] .map-modal-header,
+.theme-dark .map-modal-header {
+  background: #0F172A;
+  border-bottom-color: #1E293B;
+}
+
+[data-theme="dark"] .map-modal-close-btn,
+.theme-dark .map-modal-close-btn {
+  background: #1E293B;
+  color: #F8FAFC;
+}
+
+[data-theme="dark"] .map-modal-close-btn:hover,
+.theme-dark .map-modal-close-btn:hover {
+  background: #334155;
+  color: #FFFFFF;
+}
+
+[data-theme="dark"] .map-modal-footer,
+.theme-dark .map-modal-footer {
+  background: #0F172A;
+}
+
+/* 8. Screen 7: Alarm Triggered */
+[data-theme="dark"] .screen-alarm-alert,
+.theme-dark .screen-alarm-alert {
+  background-color: #070B14;
+}
+
+[data-theme="dark"] .alarm-destination-card,
+.theme-dark .alarm-destination-card {
+  background-color: #131D31;
+  border: 1px solid #1E293B;
+}
+
+[data-theme="dark"] .alarm-dest-title,
+.theme-dark .alarm-dest-title {
+  color: #F8FAFC;
+}
+
+[data-theme="dark"] .alarm-dest-subtitle,
+.theme-dark .alarm-dest-subtitle {
+  color: #94A3B8;
+}
+
+[data-theme="dark"] .alarm-dest-km,
+.theme-dark .alarm-dest-km {
+  color: #FBBF24;
+}
+
+/* 9. Screen 8: Trip Ongoing / Summary */
+[data-theme="dark"] .screen-trip-summary,
+.theme-dark .screen-trip-summary {
+  background-color: #0B1120;
+}
+
+[data-theme="dark"] .summary-title,
+.theme-dark .summary-title {
+  color: #F8FAFC;
+}
+
+[data-theme="dark"] .summary-subtitle,
+.theme-dark .summary-subtitle {
+  color: #94A3B8;
+}
+
+[data-theme="dark"] .summary-dest-card,
+.theme-dark .summary-dest-card {
+  background-color: #131D31;
+  border-color: #1E293B;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
+}
+
+[data-theme="dark"] .summary-dest-pin,
+.theme-dark .summary-dest-pin {
+  background-color: rgba(59, 130, 246, 0.2);
+}
+
+[data-theme="dark"] .summary-dest-name,
+.theme-dark .summary-dest-name {
+  color: #F8FAFC;
+}
+
+[data-theme="dark"] .summary-dest-city,
+.theme-dark .summary-dest-city {
+  color: #94A3B8;
+}
+
+[data-theme="dark"] .summary-metrics-card,
+.theme-dark .summary-metrics-card {
+  background-color: #131D31;
+  border-color: #1E293B;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
+}
+
+[data-theme="dark"] .metric-label,
+.theme-dark .metric-label {
+  color: #94A3B8;
+}
+
+[data-theme="dark"] .metric-value,
+.theme-dark .metric-value {
+  color: #F8FAFC;
+}
+
+[data-theme="dark"] .summary-metric-divider,
+.theme-dark .summary-metric-divider {
+  background-color: #1E293B;
+}
+
+/* 10. Screen 9: Past Trips */
+[data-theme="dark"] .screen-past-trips,
+.theme-dark .screen-past-trips {
+  background-color: #0B1120;
+}
+
+[data-theme="dark"] .past-trips-search-bar,
+.theme-dark .past-trips-search-bar {
+  background-color: #131D31;
+  border-color: #1E293B;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
+}
+
+[data-theme="dark"] .past-trips-input,
+.theme-dark .past-trips-input {
+  color: #F8FAFC;
+}
+
+[data-theme="dark"] .past-trips-input::placeholder,
+.theme-dark .past-trips-input::placeholder {
+  color: #64748B;
+}
+
+[data-theme="dark"] .past-trip-card,
+.theme-dark .past-trip-card {
+  background-color: #131D31;
+  border-color: #1E293B;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
+}
+
+[data-theme="dark"] .past-trip-card:hover,
+.theme-dark .past-trip-card:hover {
+  background-color: #1A263D;
+  border-color: #2E3E5B;
+}
+
+[data-theme="dark"] .past-trip-pin-icon,
+.theme-dark .past-trip-pin-icon {
+  background-color: rgba(59, 130, 246, 0.2);
+  color: #60A5FA;
+}
+
+[data-theme="dark"] .past-trip-title,
+.theme-dark .past-trip-title {
+  color: #F8FAFC;
+}
+
+[data-theme="dark"] .past-trip-meta,
+.theme-dark .past-trip-meta {
+  color: #94A3B8;
+}
+
+[data-theme="dark"] .past-trip-alarm-pill,
+.theme-dark .past-trip-alarm-pill {
+  background-color: rgba(245, 158, 11, 0.2);
+  color: #FBBF24;
+}
+
+[data-theme="dark"] .past-trip-delete-btn,
+.theme-dark .past-trip-delete-btn {
+  color: #64748B;
+}
+
+[data-theme="dark"] .past-trip-delete-btn:hover,
+.theme-dark .past-trip-delete-btn:hover {
+  color: #EF4444;
+  background-color: rgba(239, 68, 68, 0.15);
+}
+
+[data-theme="dark"] .empty-trips-card,
+.theme-dark .empty-trips-card {
+  background-color: #131D31;
+  border-color: #1E293B;
+  color: #94A3B8;
+}
+
+/* 11. Screen 10: Settings */
+[data-theme="dark"] .screen-settings,
+.theme-dark .screen-settings {
+  background-color: #0B1120;
+}
+
+[data-theme="dark"] .settings-group-title,
+.theme-dark .settings-group-title {
+  color: #60A5FA;
+}
+
+[data-theme="dark"] .settings-card-group,
+.theme-dark .settings-card-group {
+  background-color: #131D31;
+  border-color: #1E293B;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
+}
+
+[data-theme="dark"] .settings-row-item,
+.theme-dark .settings-row-item {
+  border-bottom-color: #1E293B;
+}
+
+[data-theme="dark"] .row-main-label,
+.theme-dark .row-main-label {
+  color: #F8FAFC;
+}
+
+[data-theme="dark"] .row-sub-label,
+.theme-dark .row-sub-label {
+  color: #94A3B8;
+}
+
+[data-theme="dark"] .unit-toggle-pill,
+.theme-dark .unit-toggle-pill {
+  background-color: #0F172A;
+  border: 1px solid #1E293B;
+}
+
+[data-theme="dark"] .unit-btn,
+.theme-dark .unit-btn {
+  color: #94A3B8;
+}
+
+[data-theme="dark"] .unit-btn.unit-active,
+.theme-dark .unit-btn.unit-active {
+  background-color: #2563EB;
+  color: #FFFFFF;
+}
+
+[data-theme="dark"] .settings-select-input,
+.theme-dark .settings-select-input {
+  background-color: #0F172A;
+  border-color: #1E293B;
+  color: #F8FAFC;
+}
+
+[data-theme="dark"] .tone-card,
+.theme-dark .tone-card {
+  border-color: #1E293B;
+  background-color: #131D31;
+}
+
+[data-theme="dark"] .tone-card.tone-selected,
+.theme-dark .tone-card.tone-selected {
+  border-color: #3B82F6;
+  background-color: rgba(59, 130, 246, 0.18);
+}
+
+[data-theme="dark"] .tone-title,
+.theme-dark .tone-title {
+  color: #F8FAFC;
+}
+
+[data-theme="dark"] .tone-preview-btn,
+.theme-dark .tone-preview-btn {
+  background-color: #1E293B;
+  color: #F8FAFC;
+}
+
+[data-theme="dark"] .btn-choose-custom-song,
+.theme-dark .btn-choose-custom-song {
+  background-color: rgba(59, 130, 246, 0.15);
+  border-color: rgba(59, 130, 246, 0.35);
+}
+
+[data-theme="dark"] .btn-choose-custom-song:hover,
+.theme-dark .btn-choose-custom-song:hover {
+  background-color: rgba(59, 130, 246, 0.25);
+}
+
+[data-theme="dark"] .choose-song-icon-box,
+.theme-dark .choose-song-icon-box {
+  background-color: #131D31;
+}
+
+[data-theme="dark"] .choose-song-title,
+.theme-dark .choose-song-title {
+  color: #F8FAFC;
+}
+
+[data-theme="dark"] .choose-song-sub,
+.theme-dark .choose-song-sub {
+  color: #94A3B8;
+}
+
+[data-theme="dark"] .choose-song-arrow,
+.theme-dark .choose-song-arrow {
+  background-color: #131D31;
+  color: #F8FAFC;
+}
+
+[data-theme="dark"] .custom-song-card,
+.theme-dark .custom-song-card {
+  background-color: #131D31;
+  border-color: #1E293B;
+}
+
+[data-theme="dark"] .custom-song-card.tone-selected,
+.theme-dark .custom-song-card.tone-selected {
+  border-color: #3B82F6;
+  background-color: rgba(59, 130, 246, 0.18);
+}
+
+[data-theme="dark"] .custom-song-icon-badge,
+.theme-dark .custom-song-icon-badge {
+  background-color: rgba(59, 130, 246, 0.2);
+}
+
+[data-theme="dark"] .custom-song-badge,
+.theme-dark .custom-song-badge {
+  color: #60A5FA;
+}
+
+[data-theme="dark"] .custom-song-filename,
+.theme-dark .custom-song-filename {
+  color: #F8FAFC;
+}
+
+[data-theme="dark"] .custom-preview-btn,
+.theme-dark .custom-preview-btn {
+  background-color: #131D31;
+  border-color: #1E293B;
+  color: #F8FAFC;
+}
+
+[data-theme="dark"] .custom-preview-btn.is-playing,
+.theme-dark .custom-preview-btn.is-playing {
+  background-color: rgba(245, 158, 11, 0.2);
+  border-color: #F59E0B;
+  color: #FBBF24;
+}
+
+[data-theme="dark"] .custom-action-icon-btn,
+.theme-dark .custom-action-icon-btn {
+  background-color: #131D31;
+  border-color: #1E293B;
+  color: #94A3B8;
+}
+
+[data-theme="dark"] .custom-action-icon-btn:hover,
+.theme-dark .custom-action-icon-btn:hover {
+  background-color: #1E293B;
+  color: #F8FAFC;
+}
+
+[data-theme="dark"] .toggle-slider,
+.theme-dark .toggle-slider {
+  background-color: #334155;
+}
+
+[data-theme="dark"] .badge-granted,
+.theme-dark .badge-granted {
+  background-color: rgba(16, 185, 129, 0.2);
+  color: #34D399;
+}
+
+[data-theme="dark"] .btn-upload-music,
+.theme-dark .btn-upload-music {
+  background-color: #0F172A;
+  border-color: #1E3A8A;
+  color: #60A5FA;
+}
+
+[data-theme="dark"] .btn-upload-music:hover,
+.theme-dark .btn-upload-music:hover {
+  background-color: rgba(37, 99, 235, 0.15);
+}
+
+/* 12. Bottom Navigation Bar */
+[data-theme="dark"] .bottom-nav-bar,
+.theme-dark .bottom-nav-bar {
+  background-color: rgba(11, 17, 32, 0.95);
+  border-top-color: #1E293B;
+  box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.5);
+}
+
+[data-theme="dark"] .nav-tab-item,
+.theme-dark .nav-tab-item {
+  color: #64748B;
+}
+
+[data-theme="dark"] .nav-tab-item:hover,
+.theme-dark .nav-tab-item:hover {
+  color: #94A3B8;
+}
+
+[data-theme="dark"] .nav-tab-item.nav-tab-active,
+.theme-dark .nav-tab-item.nav-tab-active {
+  color: #60A5FA;
+}
+
+/* 13. Dialogs & Modals */
+[data-theme="dark"] .modal-overlay,
+.theme-dark .modal-overlay {
+  background: rgba(0, 0, 0, 0.75);
+}
+
+[data-theme="dark"] .modal-dialog-card,
+.theme-dark .modal-dialog-card {
+  background-color: #131D31;
+  border: 1px solid #1E293B;
+  color: #F8FAFC;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.7);
+}
+
+[data-theme="dark"] .modal-title,
+.theme-dark .modal-title {
+  color: #F8FAFC;
+}
+
+[data-theme="dark"] .modal-desc,
+.theme-dark .modal-desc {
+  color: #94A3B8;
+}
+
+[data-theme="dark"] .btn-cancel-modal,
+.theme-dark .btn-cancel-modal {
+  background-color: #1E293B;
+  color: #F8FAFC;
+}
+
+/* 14. Interactive Map Tiles (OpenStreetMap Leaflet Inverted for Night/Dark View) */
+[data-theme="dark"] .leaflet-tile-pane,
+.theme-dark .leaflet-tile-pane {
+  filter: invert(100%) hue-rotate(180deg) brightness(95%) contrast(90%);
+}
+
+[data-theme="dark"] .dest-pin-label,
+.theme-dark .dest-pin-label {
+  background-color: #1E293B;
+  color: #FFFFFF;
+  border: 1px solid #334155;
+}
+
+/* 15. Tailwind Utility Overrides in Dark Mode */
+[data-theme="dark"] .text-slate-700,
+[data-theme="dark"] .text-slate-900,
+.theme-dark .text-slate-700,
+.theme-dark .text-slate-900 {
+  color: #F8FAFC !important;
+}
+
+[data-theme="dark"] .text-slate-600,
+.theme-dark .text-slate-600 {
+  color: #CBD5E1 !important;
+}
+
+[data-theme="dark"] .text-slate-400,
+.theme-dark .text-slate-400 {
+  color: #94A3B8 !important;
+}
+

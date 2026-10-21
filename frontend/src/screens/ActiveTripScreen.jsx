@@ -17,6 +17,8 @@ import {
   RotateCcw,
   X,
   Map,
+  Sun,
+  Moon,
 } from 'lucide-react';
 
 export default function ActiveTripScreen({
@@ -32,6 +34,8 @@ export default function ActiveTripScreen({
   onStopTrip,
   onOpenSettings,
   onSnooze,
+  theme = 'light',
+  onToggleTheme,
 }) {
   const [confirmStopOpen, setConfirmStopOpen] = useState(false);
   const [showLiveMap, setShowLiveMap] = useState(false);
@@ -187,6 +191,21 @@ export default function ActiveTripScreen({
             <Bell size={13} className="text-blue-600 fill-blue-600" />
             <span>{alertDistanceKm} km alarm</span>
           </div>
+          {onToggleTheme && (
+            <button
+              type="button"
+              className="arraivo-top-settings-btn theme-toggle-btn"
+              onClick={onToggleTheme}
+              title={theme === 'dark' ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
+              aria-label="Toggle theme"
+            >
+              {theme === 'dark' ? (
+                <Sun size={18} className="theme-icon-sun" />
+              ) : (
+                <Moon size={18} className="theme-icon-moon" />
+              )}
+            </button>
+          )}
           <button
             type="button"
             className="arraivo-top-settings-btn"

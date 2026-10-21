@@ -81,6 +81,31 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
+:root[data-theme="dark"],
+[data-theme="dark"],
+body.theme-dark {
+  --bg-primary: #030712;
+  --bg-secondary: #0B1120;
+  --bg-card: rgba(19, 29, 49, 0.94);
+  --bg-card-hover: rgba(26, 38, 61, 0.98);
+  --border-subtle: rgba(255, 255, 255, 0.12);
+  --border-active: rgba(59, 130, 246, 0.6);
+  --text-main: #F8FAFC;
+  --text-muted: #94A3B8;
+  --text-dim: #64748B;
+  --shadow-card: 0 10px 30px -5px rgba(0, 0, 0, 0.6), 0 0 0 1px var(--border-subtle);
+}
+
+body.theme-dark,
+body[data-theme="dark"],
+[data-theme="dark"] body {
+  background-color: #030712;
+  color: #F8FAFC;
+  background-image:
+    radial-gradient(circle at 15% 15%, rgba(30, 107, 255, 0.08) 0%, transparent 40%),
+    radial-gradient(circle at 85% 85%, rgba(15, 23, 42, 0.6) 0%, transparent 45%);
+}
+
 /* Master Responsive App Container */
 .app-container {
   width: 100%;

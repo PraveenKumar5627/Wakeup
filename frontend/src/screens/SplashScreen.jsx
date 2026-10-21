@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import StatusBar from '../components/StatusBar';
+import arraivoSplash from '../assets/arraivo_splash.png';
 import { MapPin, Bell, Navigation, ArrowRight, Check } from 'lucide-react';
 
 export default function SplashScreen({ onFinish }) {
@@ -7,16 +8,20 @@ export default function SplashScreen({ onFinish }) {
   const [slide, setSlide] = useState(0);
 
   useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const forceSplash = params.get('splash') === '1' || params.get('splash') === 'true';
+
     // Check if onboarding was previously completed
-    const onboardingDone = localStorage.getItem('arrivo_onboarding_done_v2');
+    const onboardingDone = !forceSplash && localStorage.getItem('arrivo_onboarding_done_v2');
 
     const timer = setTimeout(() => {
+      if (forceSplash) return;
       if (onboardingDone) {
         onFinish();
       } else {
         setStage('onboarding');
       }
-    }, 2000);
+    }, 2500);
 
     return () => clearTimeout(timer);
   }, [onFinish]);
@@ -51,23 +56,12 @@ export default function SplashScreen({ onFinish }) {
     return (
       <div className="screen-splash" onClick={() => setStage('onboarding')}>
         <StatusBar theme="dark" />
-        <div className="splash-center">
-          <div className="splash-logo-card">
-            <div className="splash-logo-art">
-              <span className="logo-letter">A</span>
-              <span className="logo-word">rraivo</span>
-              <div className="logo-sunrise-arc"></div>
-            </div>
-            <p className="splash-brand-sub">TRAVEL ALARM</p>
-          </div>
-          <p className="splash-tagline">Your destination is closer than you think.</p>
-        </div>
-        <div className="splash-footer">
-          <div className="splash-loader-dots">
-            <span className="dot dot-1"></span>
-            <span className="dot dot-2"></span>
-            <span className="dot dot-3"></span>
-          </div>
+        <div className="splash-pure-content">
+          <img
+            src={arraivoSplash}
+            alt="Arraivo"
+            className="splash-pure-img"
+          />
         </div>
       </div>
     );

@@ -1,7 +1,8 @@
 import React from 'react';
 import StatusBar from '../components/StatusBar';
 import BottomNavBar from '../components/BottomNavBar';
-import { Settings, MapPin, Bell, ChevronRight, Navigation, Compass } from 'lucide-react';
+import arraivoLogo from '../assets/arraivo_splash.png';
+import { Settings, MapPin, Bell, ChevronRight, Navigation, Compass, Sun, Moon } from 'lucide-react';
 
 export default function HomeScreen({
   userName = 'Praveen',
@@ -15,6 +16,8 @@ export default function HomeScreen({
   activeDestination = null,
   remainingDistance = null,
   onResumeTrip,
+  theme = 'light',
+  onToggleTheme,
 }) {
   // Determine smart time-of-day greeting
   const getGreeting = () => {
@@ -54,16 +57,39 @@ export default function HomeScreen({
 
       {/* Top Header */}
       <header className="home-top-header">
-        <h1 className="home-brand-title">Travel Destination Alarm...</h1>
-        <button
-          type="button"
-          className="header-icon-btn"
-          onClick={onOpenSettings}
-          title="App Settings"
-          aria-label="Settings"
-        >
-          <Settings size={20} className="text-slate-700" />
-        </button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '9px' }}>
+          <img
+            src={arraivoLogo}
+            alt="Arraivo Logo"
+            style={{ width: '28px', height: '28px', borderRadius: '7px', objectFit: 'cover' }}
+          />
+          <h1 className="home-brand-title">Arraivo</h1>
+        </div>
+        <div className="home-header-actions" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <button
+            type="button"
+            className="header-icon-btn theme-toggle-btn"
+            onClick={onToggleTheme}
+            title={theme === 'dark' ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
+            aria-label="Toggle theme"
+            id="btn-theme-toggle"
+          >
+            {theme === 'dark' ? (
+              <Sun size={20} className="theme-icon-sun" />
+            ) : (
+              <Moon size={20} className="theme-icon-moon" />
+            )}
+          </button>
+          <button
+            type="button"
+            className="header-icon-btn"
+            onClick={onOpenSettings}
+            title="App Settings"
+            aria-label="Settings"
+          >
+            <Settings size={20} className="text-slate-700" />
+          </button>
+        </div>
       </header>
 
       {/* Main Scrollable Content */}

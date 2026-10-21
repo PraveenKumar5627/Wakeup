@@ -57,6 +57,28 @@ export default function App() {
   });
   const [alertDistanceKm, setAlertDistanceKm] = useState(3.0);
 
+  // ── Appearance / Theme State ─────────────────────────────────────────────
+  const [theme, setTheme] = useState(
+    () => localStorage.getItem('arraivo_theme') || 'light'
+  );
+
+  const toggleTheme = () => {
+    setTheme((prev) => (prev === 'dark' ? 'light' : 'dark'));
+  };
+
+  useEffect(() => {
+    localStorage.setItem('arraivo_theme', theme);
+    document.documentElement.setAttribute('data-theme', theme);
+    document.body.setAttribute('data-theme', theme);
+    if (theme === 'dark') {
+      document.body.classList.add('theme-dark');
+      document.body.classList.remove('theme-light');
+    } else {
+      document.body.classList.add('theme-light');
+      document.body.classList.remove('theme-dark');
+    }
+  }, [theme]);
+
   // ── Active Trip State ────────────────────────────────────────────────────
   const [isTripActive, setIsTripActive] = useState(false);
   const [tripStartTime, setTripStartTime] = useState(null);
@@ -441,6 +463,8 @@ export default function App() {
           <HomeScreen
             userName={userName}
             recentTrips={pastTrips}
+            theme={theme}
+            onToggleTheme={toggleTheme}
             onSetDestination={() => {
               if (!currentLocation) {
                 getCurrentLocation().catch(() => {});
@@ -477,6 +501,8 @@ export default function App() {
             onRequestPermission={requestPermission}
             onBack={() => setCurrentScreen('home')}
             onStartTrip={handleStartTrip}
+            theme={theme}
+            onToggleTheme={toggleTheme}
           />
         );
 
@@ -489,6 +515,7 @@ export default function App() {
             onAllowLocation={handleAllowLocation}
             onNotNow={handleNotNowLocation}
             onOpenSettings={openLocationSettings}
+            theme={theme}
           />
         );
 
@@ -510,6 +537,8 @@ export default function App() {
               setActiveTab('settings');
             }}
             onSnooze={handleSnooze}
+            theme={theme}
+            onToggleTheme={toggleTheme}
           />
         );
 
@@ -521,6 +550,7 @@ export default function App() {
             alertDistanceKm={alertDistanceKm}
             onSnooze={handleSnooze}
             onStopAlarm={handleStopAlarm}
+            theme={theme}
           />
         );
 
@@ -533,6 +563,7 @@ export default function App() {
             durationText={routeDetails?.durationText}
             onEndTrip={handleStopTrip}
             onSetAnotherDestination={handleSetAnotherDestination}
+            theme={theme}
           />
         );
 
@@ -550,6 +581,8 @@ export default function App() {
             onTabChange={handleTabChange}
             isTripActive={isTripActive}
             showBottomNav={true}
+            theme={theme}
+            onToggleTheme={toggleTheme}
           />
         );
 
@@ -565,6 +598,9 @@ export default function App() {
             isTripActive={isTripActive}
             showBottomNav={true}
             onBack={() => setCurrentScreen('home')}
+            theme={theme}
+            onToggleTheme={toggleTheme}
+            onSetTheme={setTheme}
           />
         );
 
@@ -574,8 +610,14 @@ export default function App() {
   };
 
   return (
-    <div className="travel-alarm-viewport-wrapper">
-      <div className="travel-alarm-phone-frame">
+    <div
+      className={`travel-alarm-viewport-wrapper ${theme === 'dark' ? 'theme-dark' : 'theme-light'}`}
+      data-theme={theme}
+    >
+      <div
+        className={`travel-alarm-phone-frame ${theme === 'dark' ? 'theme-dark' : 'theme-light'}`}
+        data-theme={theme}
+      >
         {renderScreen()}
       </div>
     </div>
