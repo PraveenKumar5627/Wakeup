@@ -27,8 +27,10 @@ export default function ActiveTripScreen({
   currentLocation,
   remainingDistanceKm,
   initialDistanceKm,
+  travelledDistanceKm = 0.0,
   routeDetails = {},
   gpsError = null,
+  lastUpdatedTime = null,
   isSimulating = false,
   onToggleSimulate,
   onStopTrip,
@@ -39,7 +41,7 @@ export default function ActiveTripScreen({
 }) {
   const [confirmStopOpen, setConfirmStopOpen] = useState(false);
   const [showLiveMap, setShowLiveMap] = useState(false);
-  const [lastUpdated, setLastUpdated] = useState('Just now');
+  const [relativeUpdateText, setRelativeUpdateText] = useState('Just now');
 
   const mapContainerRef = useRef(null);
   const mapInstanceRef = useRef(null);
@@ -47,23 +49,30 @@ export default function ActiveTripScreen({
   const markerUserRef = useRef(null);
   const routePolylineRef = useRef(null);
 
-  const destName = destination?.name || 'Munnar';
-  const destCity = destination?.city || 'Devikulam, Kerala, India';
-
-  // Total journey distance established at start (never less than remaining distance)
-  const initDist = Math.max(initialDistanceKm || 0, remainingDistanceKm || 0) || 165;
+  const destName = destination?.name || 'Destination';
+  const destCity = destination?.city || 'Tamil Nadu';
 
   // Present remaining distance (decreases as user gets closer: e.g. 165 -> 150 -> 100 -> 50 -> 0)
-  const remDist = remainingDistanceKm !== null ? remainingDistanceKm : initDist;
-  const displayRemDist = remDist < 10 ? remDist.toFixed(1) : Math.round(remDist);
+  const remDist = remainingDistanceKm != null && Number.isFinite(remainingDistanceKm)
+    ? Math.max(0, remainingDistanceKm)
+    : null;
+  const displayRemDist = remDist !== null
+    ? (remDist < 10 ? remDist.toFixed(1) : Math.round(remDist).toString())
+    : (initialDistanceKm != null ? (initialDistanceKm < 10 ? initialDistanceKm.toFixed(1) : Math.round(initialDistanceKm).toString()) : '--');
 
-  // Distance Travelled (starts at 0 km initially and increases as user moves)
-  const distanceTravelled = Math.max(0, initDist - remDist);
-  const displayTravelled = distanceTravelled < 10 ? distanceTravelled.toFixed(1) : Math.round(distanceTravelled);
+  // Total journey distance established at start (never less than remaining distance)
+  const initDist = Math.max(initialDistanceKm || 0, remDist || 0);
+
+  // Distance Travelled: calculated using trip starting coordinates and current GPS coordinates
+  const distanceTravelled = travelledDistanceKm != null && Number.isFinite(travelledDistanceKm)
+    ? Math.max(0, travelledDistanceKm)
+    : (initDist > 0 && remDist !== null ? Math.max(0, initDist - remDist) : 0.0);
+  const displayTravelled = distanceTravelled < 10 ? distanceTravelled.toFixed(1) : Math.round(distanceTravelled).toString();
 
   // Circular gauge progress percentage (0% at trip start, fills to 100% on arrival)
-  const progressPercent = initDist > 0
-    ? Math.min(100, Math.max(0, Math.round((distanceTravelled / initDist) * 100)))
+  const totalTripSpan = Math.max(initDist, distanceTravelled + (remDist || 0));
+  const progressPercent = totalTripSpan > 0
+    ? Math.min(100, Math.max(0, Math.round((distanceTravelled / totalTripSpan) * 100)))
     : 0;
 
   // Circular gauge circumference (radius = 46)
@@ -74,7 +83,7 @@ export default function ActiveTripScreen({
 
   // Calculate ETA clock string
   const formatETA = () => {
-    const mins = routeDetails?.durationMin || Math.round((remDist || 30) * 2.1);
+    const mins = routeDetails?.durationMin || Math.round(((remDist != null ? remDist : initialDistanceKm) || 30) * 2.1);
     const arrival = new Date(Date.now() + mins * 60000);
     let h = arrival.getHours();
     const m = arrival.getMinutes().toString().padStart(2, '0');
@@ -85,29 +94,34 @@ export default function ActiveTripScreen({
 
   const etaText = formatETA();
 
-  // Track last update text
+  // Track last update text using authentic device GPS timestamp
   useEffect(() => {
-    setLastUpdated('Just now');
+    if (lastUpdatedTime) {
+      setRelativeUpdateText(lastUpdatedTime);
+      return;
+    }
+    setRelativeUpdateText('Just now');
     const t = setInterval(() => {
-      setLastUpdated('1 min ago');
+      setRelativeUpdateText('1 min ago');
     }, 60000);
     return () => clearInterval(t);
-  }, [currentLocation]);
+  }, [currentLocation, lastUpdatedTime]);
 
   // Leaflet map setup for expandable live map
   useEffect(() => {
     if (!showLiveMap || !window.L || !mapContainerRef.current) return;
 
-    const destLat = destination?.lat || 10.0889;
-    const destLng = destination?.lng || 77.0595;
-    const userLat = currentLocation?.lat || destLat - 0.035;
-    const userLng = currentLocation?.lng || destLng - 0.035;
+    const destLat = destination?.lat || 11.7851;
+    const destLng = destination?.lng || 79.3671;
+    const userLat = currentLocation?.lat;
+    const userLng = currentLocation?.lng;
 
     if (!mapInstanceRef.current) {
+      const centerCoords = userLat && userLng ? [userLat, userLng] : [destLat, destLng];
       const map = window.L.map(mapContainerRef.current, {
         zoomControl: false,
         attributionControl: false,
-      }).setView([destLat, destLng], 12);
+      }).setView(centerCoords, 12);
       mapInstanceRef.current = map;
 
       window.L.tileLayer('https://{s}.google.com/vt/lyrs=m&x={x}&y={y}&z={z}', {
@@ -125,43 +139,65 @@ export default function ActiveTripScreen({
       });
       markerDestRef.current = window.L.marker([destLat, destLng], { icon: destIcon }).addTo(map);
 
-      // User live puck
-      const userIcon = window.L.divIcon({
-        className: 'user-custom-puck',
-        html: `<div style="background:#10B981;border:3px solid #FFFFFF;border-radius:50%;width:22px;height:22px;box-shadow:0 0 16px rgba(16,185,129,0.8);"></div>`,
-        iconSize: [22, 22],
-        iconAnchor: [11, 11],
-      });
-      markerUserRef.current = window.L.marker([userLat, userLng], { icon: userIcon }).addTo(map);
+      // User live puck (if coordinates available)
+      if (userLat && userLng) {
+        const userIcon = window.L.divIcon({
+          className: 'user-custom-puck',
+          html: `<div style="background:#10B981;border:3px solid #FFFFFF;border-radius:50%;width:22px;height:22px;box-shadow:0 0 16px rgba(16,185,129,0.8);"></div>`,
+          iconSize: [22, 22],
+          iconAnchor: [11, 11],
+        });
+        markerUserRef.current = window.L.marker([userLat, userLng], { icon: userIcon }).addTo(map);
 
-      // Route polyline
-      routePolylineRef.current = window.L.polyline(
-        [
-          [userLat, userLng],
-          [destLat, destLng],
-        ],
-        { color: '#1E6BFF', weight: 4.5, opacity: 0.9, dashArray: '6, 8' }
-      ).addTo(map);
+        routePolylineRef.current = window.L.polyline(
+          [
+            [userLat, userLng],
+            [destLat, destLng],
+          ],
+          { color: '#1E6BFF', weight: 4.5, opacity: 0.9, dashArray: '6, 8' }
+        ).addTo(map);
+      }
 
       setTimeout(() => {
         if (mapInstanceRef.current) {
           mapInstanceRef.current.invalidateSize();
-          const bounds = window.L.latLngBounds([
-            [userLat, userLng],
-            [destLat, destLng],
-          ]);
-          mapInstanceRef.current.fitBounds(bounds, { padding: [40, 40] });
+          if (userLat && userLng) {
+            const bounds = window.L.latLngBounds([
+              [userLat, userLng],
+              [destLat, destLng],
+            ]);
+            mapInstanceRef.current.fitBounds(bounds, { padding: [40, 40] });
+          }
         }
       }, 100);
     } else {
-      if (markerUserRef.current) {
-        markerUserRef.current.setLatLng([userLat, userLng]);
-      }
-      if (routePolylineRef.current) {
-        routePolylineRef.current.setLatLngs([
-          [userLat, userLng],
-          [destLat, destLng],
-        ]);
+      if (userLat && userLng) {
+        if (markerUserRef.current) {
+          markerUserRef.current.setLatLng([userLat, userLng]);
+        } else {
+          const userIcon = window.L.divIcon({
+            className: 'user-custom-puck',
+            html: `<div style="background:#10B981;border:3px solid #FFFFFF;border-radius:50%;width:22px;height:22px;box-shadow:0 0 16px rgba(16,185,129,0.8);"></div>`,
+            iconSize: [22, 22],
+            iconAnchor: [11, 11],
+          });
+          markerUserRef.current = window.L.marker([userLat, userLng], { icon: userIcon }).addTo(mapInstanceRef.current);
+        }
+
+        if (routePolylineRef.current) {
+          routePolylineRef.current.setLatLngs([
+            [userLat, userLng],
+            [destLat, destLng],
+          ]);
+        } else {
+          routePolylineRef.current = window.L.polyline(
+            [
+              [userLat, userLng],
+              [destLat, destLng],
+            ],
+            { color: '#1E6BFF', weight: 4.5, opacity: 0.9, dashArray: '6, 8' }
+          ).addTo(mapInstanceRef.current);
+        }
       }
     }
   }, [showLiveMap, currentLocation, destination]);
@@ -253,14 +289,14 @@ export default function ActiveTripScreen({
 
           <div className="metrics-column-separator" />
 
-          {/* Col 2: Road Distance (Actual remaining distance from present location that decreases) */}
+          {/* Col 2: Road / Direct Distance (Actual remaining distance from present location) */}
           <div className="metric-column">
             <div className="metric-icon-circle">
               <Route size={18} className="text-blue-600" />
             </div>
             <div className="metric-number-val">{displayRemDist} km</div>
             <div className="metric-caption-label flex items-center justify-center gap-1">
-              <span>Road Distance</span>
+              <span>{routeDetails?.routeType === 'straight_line' ? 'Direct Distance' : 'Road Distance'}</span>
               <Info size={11} className="opacity-70" />
             </div>
           </div>
@@ -323,12 +359,32 @@ export default function ActiveTripScreen({
 
               <div className="status-live-pill">
                 <span className="live-pulsing-dot" />
-                <span>{gpsError ? 'GPS Reconnecting' : 'GPS Active'}</span>
+                <span>
+                  {(() => {
+                    if (gpsError) {
+                      const errLower = gpsError.toLowerCase();
+                      if (errLower.includes('denied') || errLower.includes('permission')) {
+                        return 'GPS Denied';
+                      }
+                      if (errLower.includes('disabled') || errLower.includes('services')) {
+                        return 'GPS Disabled';
+                      }
+                      if (errLower.includes('timeout')) {
+                        return 'GPS Timeout';
+                      }
+                      return 'GPS Reconnecting';
+                    }
+                    if (!currentLocation) {
+                      return 'Acquiring GPS...';
+                    }
+                    return 'GPS Active';
+                  })()}
+                </span>
               </div>
 
               <div className="last-update-row">
                 <Compass size={13} className="text-slate-400" />
-                <span>Last update • {lastUpdated}</span>
+                <span>Last update • {relativeUpdateText}</span>
               </div>
             </div>
           </div>

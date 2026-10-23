@@ -84,6 +84,7 @@ export default function App() {
   const [tripStartTime, setTripStartTime] = useState(null);
   const [initialDistanceKm, setInitialDistanceKm] = useState(5.0);
   const [remainingDistanceKm, setRemainingDistanceKm] = useState(null);
+  const [travelledDistanceKm, setTravelledDistanceKm] = useState(0.0);
   const [routeDetails, setRouteDetails] = useState({
     routeType: 'road',
     durationText: '~ 20 min',
@@ -104,6 +105,7 @@ export default function App() {
   const simOffsetRef = useRef(0.04);
   const simTimerRef = useRef(null);
   const tripStartCoordsRef = useRef(null);
+  const isStartingTripRef = useRef(false);
 
   // ── Screen Wake Lock ─────────────────────────────────────────────────────
   const wakeLockRef = useRef(null);
@@ -114,6 +116,8 @@ export default function App() {
   const {
     locationPermStatus,
     currentLocation,
+    lastUpdated,
+    locationError,
     hasValidLocation,
     isServicesOff,
     isPermanentlyDenied,
@@ -125,6 +129,7 @@ export default function App() {
     openLocationSettings,
     startWatch,
     stopWatch,
+    updateTrackingNotification,
   } = useLocationPermission();
 
   // ── Load past trips on startup ───────────────────────────────────────────
@@ -177,33 +182,54 @@ export default function App() {
   const evaluateDistance = useCallback(
     async (lat, lng, dest, thresholdKm) => {
       if (lat == null || lng == null || !dest?.lat || !dest?.lng) return;
+      const curLat = Number(lat);
+      const curLng = Number(lng);
+      const dLat = Number(dest.lat);
+      const dLng = Number(dest.lng);
+      const thresh = Number(thresholdKm);
+
+      if (
+        !Number.isFinite(curLat) ||
+        !Number.isFinite(curLng) ||
+        !Number.isFinite(dLat) ||
+        !Number.isFinite(dLng)
+      ) {
+        return;
+      }
 
       try {
         setGpsError(null);
 
         // Record trip starting location on first valid GPS fix if not already set
         if (!tripStartCoordsRef.current) {
-          tripStartCoordsRef.current = { lat, lng };
+          tripStartCoordsRef.current = { lat: curLat, lng: curLng };
         }
 
-        // 1. INSTANT LOCAL HAVERSINE (0ms latency!)
-        // Immediately show the actual distance with 0ms waiting!
-        const straightDist = haversineDistanceKm(lat, lng, dest.lat, dest.lng);
-        setRemainingDistanceKm((prev) => (prev === null ? straightDist : prev));
+        // 1. Instant local Haversine distance
+        const straightDist = haversineDistanceKm(curLat, curLng, dLat, dLng);
+        const localTravelled = tripStartCoordsRef.current
+          ? haversineDistanceKm(tripStartCoordsRef.current.lat, tripStartCoordsRef.current.lng, curLat, curLng)
+          : 0.0;
 
-        // 2. FAST ROAD ROUTING (OSRM ~150ms / Backend)
+        setRemainingDistanceKm((prev) => (prev === null ? straightDist : prev));
+        setTravelledDistanceKm((prev) => (prev === 0 ? localTravelled : prev));
+
+        // 2. Road Routing / Backend calculation
         const result = await calculateDistance({
-          currentLat: lat,
-          currentLng: lng,
-          destLat: dest.lat,
-          destLng: dest.lng,
-          alertDistance: thresholdKm,
+          currentLat: curLat,
+          currentLng: curLng,
+          destLat: dLat,
+          destLng: dLng,
+          alertDistance: thresh,
           startLat: tripStartCoordsRef.current?.lat,
           startLng: tripStartCoordsRef.current?.lng,
         });
 
-        const dist = result.distance_km;
+        const dist = Math.max(0, Number(result.distance_km));
+        const travelled = Math.max(0, Number(result.travelled_distance_km ?? localTravelled));
+
         setRemainingDistanceKm(dist);
+        setTravelledDistanceKm(travelled);
 
         // Keep initial journey distance accurate (never smaller than distance to destination at start)
         setInitialDistanceKm((prevInit) => {
@@ -220,9 +246,17 @@ export default function App() {
           straightLineKm: result.straight_line_km || straightDist,
         });
 
-        // Detect threshold crossing:
+        // Update persistent Android notification if native
+        if (updateTrackingNotification) {
+          updateTrackingNotification(
+            `Arraivo: ${dest.name || 'Trip Active'}`,
+            `${dist < 10 ? dist.toFixed(1) : Math.round(dist)} km remaining • Alarm at ${thresh} km`
+          );
+        }
+
+        // 3. Threshold Crossing Detection:
         // When remaining distance <= selected threshold, trigger alarm ONCE.
-        const isWithinThreshold = dist <= thresholdKm;
+        const isWithinThreshold = dist <= thresh;
         const isSnoozed = Date.now() < snoozeUntilRef.current;
 
         if (isWithinThreshold && !isSnoozed && !alarmFiredRef.current) {
@@ -235,22 +269,38 @@ export default function App() {
         console.warn('Distance evaluation notice:', err);
       }
     },
-    []
+    [updateTrackingNotification]
   );
 
   // ── Start Trip Action ────────────────────────────────────────────────────
   const handleStartTrip = async (dest, distKm) => {
+    if (isStartingTripRef.current) return;
+    isStartingTripRef.current = true;
+
+    // Pre-warm Web Audio Context on user gesture to avoid browser autoplay restrictions
+    try {
+      alarmAudio.initContext();
+    } catch (_) {}
+
     setDestination(dest);
-    setAlertDistanceKm(distKm);
+    const parsedDist = Math.max(0.1, Number(distKm) || 3.0);
+    setAlertDistanceKm(parsedDist);
 
     // Check location permission
-    if (locationPermStatus !== 'granted') {
+    let perm = locationPermStatus;
+    if (perm === 'idle' || perm === 'checking') {
+      perm = await checkPermissionStatus();
+    }
+
+    if (perm !== 'granted') {
+      isStartingTripRef.current = false;
       setCurrentScreen('permission');
       return;
     }
 
-    // Permission is granted: proceed to launch active trip immediately
-    await initiateActiveTracking(dest, distKm, currentLocation);
+    // Permission is granted: proceed to launch active trip with real location
+    await initiateActiveTracking(dest, parsedDist, currentLocation);
+    isStartingTripRef.current = false;
   };
 
   const initiateActiveTracking = async (dest, distKm, initialLoc = null) => {
@@ -259,40 +309,40 @@ export default function App() {
     setIsTripActive(true);
     setTripStartTime(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
 
-    // Instant location resolution without blocking
+    // Real location resolution: never invent coordinates or use mock locations
     const loc = initialLoc || currentLocation;
     if (loc?.lat && loc?.lng) {
       tripStartCoordsRef.current = { lat: loc.lat, lng: loc.lng };
+      const instantKm = haversineDistanceKm(loc.lat, loc.lng, dest.lat, dest.lng);
+      setRemainingDistanceKm(instantKm);
+      setInitialDistanceKm(instantKm);
+      setTravelledDistanceKm(0.0);
+      evaluateDistance(loc.lat, loc.lng, dest, distKm).catch(() => {});
     } else {
       tripStartCoordsRef.current = null;
+      setRemainingDistanceKm(null);
+      setTravelledDistanceKm(0.0);
     }
-    const startLat = loc?.lat || dest.lat - 0.045;
-    const startLng = loc?.lng || dest.lng - 0.045;
 
-    // Instant local Haversine distance so screen transitions with 0ms delay!
-    const instantKm = haversineDistanceKm(startLat, startLng, dest.lat, dest.lng);
-    setRemainingDistanceKm(instantKm);
-    setInitialDistanceKm(instantKm);
-
-    // Transition to Active Trip screen IMMEDIATELY — ZERO delay!
+    // Transition to Active Trip screen IMMEDIATELY
     setCurrentScreen('active_trip');
     setActiveTab('map');
-
-    // Run road driving calculation in background asynchronously without blocking UI
-    evaluateDistance(startLat, startLng, dest, distKm).catch(() => {});
 
     // If exact location wasn't available yet, request high-accuracy position immediately!
     if (!loc) {
       getCurrentLocation({ force: true })
         .then((freshLoc) => {
-          if (freshLoc) {
+          if (freshLoc?.lat && freshLoc?.lng) {
+            setGpsError(null);
             evaluateDistance(freshLoc.lat, freshLoc.lng, dest, distKm);
           }
         })
-        .catch(() => {});
+        .catch((err) => {
+          setGpsError(err?.message || 'Searching for GPS signal...');
+        });
     }
 
-    // Start continuous live GPS watch
+    // Start continuous live GPS watch + 5-second interval engine
     startWatch(
       ({ lat, lng }) => {
         setGpsError(null);
@@ -307,22 +357,23 @@ export default function App() {
   // ── Location Permission Screen Actions ───────────────────────────────────
   const handleAllowLocation = async () => {
     try {
-      // Allow user reasonable time (up to 4.5s) to tap Allow on the OS dialog
-      const loc = await Promise.race([
-        requestPermission(),
-        new Promise((resolve) => setTimeout(() => resolve(null), 4500)),
-      ]);
+      alarmAudio.initContext();
+    } catch (_) {}
 
-      await initiateActiveTracking(destination, alertDistanceKm, loc);
+    try {
+      const loc = await requestPermission();
+      if (loc?.lat && loc?.lng) {
+        await initiateActiveTracking(destination, alertDistanceKm, loc);
+      }
     } catch (err) {
       console.warn('Location request fallback:', err);
-      await initiateActiveTracking(destination, alertDistanceKm, null);
     }
   };
 
-  const handleNotNowLocation = async () => {
-    // Advance to active tracking with departure location
-    await initiateActiveTracking(destination, alertDistanceKm, null);
+  const handleNotNowLocation = () => {
+    // User chose not to grant permission: safely return to destination selection
+    setCurrentScreen('destination');
+    setActiveTab('map');
   };
 
   // ── Alarm Screen Actions ─────────────────────────────────────────────────
@@ -339,6 +390,7 @@ export default function App() {
   const handleStopAlarm = () => {
     alarmAudio.stopAlarm();
     setIsAlarmActive(false);
+    // Alarm fired state remains true so it does NOT trigger again during this trip!
     // Move to Trip Summary ("Trip Ongoing")
     setCurrentScreen('summary');
   };
@@ -351,7 +403,12 @@ export default function App() {
     setIsAlarmActive(false);
     setIsSimulating(false);
     if (simTimerRef.current) clearInterval(simTimerRef.current);
+    const startCoords = tripStartCoordsRef.current;
     tripStartCoordsRef.current = null;
+    isStartingTripRef.current = false;
+    setRemainingDistanceKm(null);
+    setTravelledDistanceKm(0.0);
+    setGpsError(null);
 
     // Save trip to history
     const completedTrip = {
@@ -360,10 +417,12 @@ export default function App() {
       destination_city: destination.city || 'Tamil Nadu',
       destination_latitude: destination.lat,
       destination_longitude: destination.lng,
+      start_latitude: startCoords?.lat,
+      start_longitude: startCoords?.lng,
       alert_distance_km: alertDistanceKm,
       distance_at_start_km: initialDistanceKm || 5.0,
       status: 'completed',
-      start_time: tripStartTime || 'Today, 10:00 AM',
+      start_time: tripStartTime || new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       end_time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       duration_text: routeDetails?.durationText || '~ 20 min',
       alarm_triggered: alarmFiredRef.current,
@@ -384,6 +443,10 @@ export default function App() {
     setIsTripActive(false);
     setIsAlarmActive(false);
     tripStartCoordsRef.current = null;
+    isStartingTripRef.current = false;
+    setRemainingDistanceKm(null);
+    setTravelledDistanceKm(0.0);
+    setGpsError(null);
     setCurrentScreen('destination');
     setActiveTab('map');
   };
@@ -510,6 +573,7 @@ export default function App() {
         return (
           <LocationPermissionScreen
             permissionStatus={locationPermStatus}
+            errorMessage={locationError}
             isServicesOff={isServicesOff}
             isPermanentlyDenied={isPermanentlyDenied}
             onAllowLocation={handleAllowLocation}
@@ -527,8 +591,10 @@ export default function App() {
             currentLocation={currentLocation}
             remainingDistanceKm={remainingDistanceKm}
             initialDistanceKm={initialDistanceKm}
+            travelledDistanceKm={travelledDistanceKm}
             routeDetails={routeDetails}
             gpsError={gpsError}
+            lastUpdatedTime={lastUpdated}
             isSimulating={isSimulating}
             onToggleSimulate={handleToggleSimulate}
             onStopTrip={handleStopTrip}

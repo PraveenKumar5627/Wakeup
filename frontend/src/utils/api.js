@@ -28,17 +28,43 @@ export function formatDuration(durationMinutes) {
 
 /**
  * Calculate straight-line spherical distance via Haversine formula (fallback).
+ * Strictly guards against invalid, negative, NaN, or non-finite coordinate values.
  */
 export function haversineDistanceKm(lat1, lon1, lat2, lon2) {
+  if (lat1 == null || lon1 == null || lat2 == null || lon2 == null) {
+    return 0.0;
+  }
+
+  const nLat1 = Number(lat1);
+  const nLon1 = Number(lon1);
+  const nLat2 = Number(lat2);
+  const nLon2 = Number(lon2);
+
+  if (
+    !Number.isFinite(nLat1) ||
+    !Number.isFinite(nLon1) ||
+    !Number.isFinite(nLat2) ||
+    !Number.isFinite(nLon2)
+  ) {
+    return 0.0;
+  }
+
+  // Same coordinates or negligible distance (< 5 meters)
+  if (Math.abs(nLat1 - nLat2) < 0.00005 && Math.abs(nLon1 - nLon2) < 0.00005) {
+    return 0.0;
+  }
+
   const R = 6371.0;
   const toRad = (deg) => (deg * Math.PI) / 180;
-  const dLat = toRad(lat2 - lat1);
-  const dLon = toRad(lon2 - lon1);
+  const dLat = toRad(nLat2 - nLat1);
+  const dLon = toRad(nLon2 - nLon1);
   const a =
     Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) * Math.sin(dLon / 2);
-  const c = 2 * Math.atan2(Math.sqrt(Math.min(1.0, Math.max(0.0, a))), Math.sqrt(1 - Math.min(1.0, Math.max(0.0, a))));
-  return Number((R * c).toFixed(2));
+    Math.cos(toRad(nLat1)) * Math.cos(toRad(nLat2)) * Math.sin(dLon / 2) * Math.sin(dLon / 2);
+  const safeA = Math.min(1.0, Math.max(0.0, a));
+  const c = 2 * Math.atan2(Math.sqrt(safeA), Math.sqrt(Math.max(0.0, 1.0 - safeA)));
+  const dist = Number((R * c).toFixed(2));
+  return Number.isFinite(dist) && !Number.isNaN(dist) ? Math.max(0, dist) : 0.0;
 }
 
 /**
@@ -63,7 +89,7 @@ export async function fetchOsrmRoadDistance(lat1, lon1, lat2, lon2) {
 
   try {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 4500);
+    const timeoutId = setTimeout(() => controller.abort(), 3500);
 
     const url = `https://router.project-osrm.org/route/v1/driving/${lon1.toFixed(6)},${lat1.toFixed(6)};${lon2.toFixed(6)},${lat2.toFixed(6)}?overview=false`;
     const res = await fetch(url, {
@@ -76,8 +102,8 @@ export async function fetchOsrmRoadDistance(lat1, lon1, lat2, lon2) {
       const data = await res.json();
       if (data.code === 'Ok' && data.routes && data.routes.length > 0) {
         const primary = data.routes[0];
-        const distKm = Number((primary.distance / 1000.0).toFixed(2));
-        const durMin = Number((primary.duration / 60.0).toFixed(1));
+        const distKm = Math.max(0, Number((primary.distance / 1000.0).toFixed(2)));
+        const durMin = Math.max(0, Number((primary.duration / 60.0).toFixed(1)));
         const durText = formatDuration(durMin);
         const result = {
           distanceKm: distKm,
@@ -90,7 +116,7 @@ export async function fetchOsrmRoadDistance(lat1, lon1, lat2, lon2) {
       }
     }
   } catch (err) {
-    console.warn('OSRM road routing direct fetch notice:', err.message);
+    console.warn('OSRM road routing direct fetch notice:', err?.message || err);
   }
 
   return null;
@@ -98,13 +124,8 @@ export async function fetchOsrmRoadDistance(lat1, lon1, lat2, lon2) {
 
 /**
  * Calculates real driving/road distance between current location and destination.
- * Checks alert distance threshold and returns human-readable status.
- *
- * Ultra-fast strategy:
- * 1. Computes instant baseline Haversine straight-line distance locally (0ms).
- * 2. Fetches high-accuracy driving road distance from OSRM (~150ms).
- * 3. Never blocks for multi-second timeouts. If offline or slow network,
- *    returns straight-line distance immediately without stalling the user.
+ * Checks alert distance threshold, computes travelled distance from start,
+ * synchronizes with FastAPI backend when reachable, and falls back seamlessly.
  *
  * @param {Object} params
  * @param {number} params.currentLat
@@ -112,6 +133,8 @@ export async function fetchOsrmRoadDistance(lat1, lon1, lat2, lon2) {
  * @param {number} params.destLat
  * @param {number} params.destLng
  * @param {number} params.alertDistance
+ * @param {number} [params.startLat]
+ * @param {number} [params.startLng]
  * @returns {Promise<{
  *   distance_km: number,
  *   alert: boolean,
@@ -119,7 +142,9 @@ export async function fetchOsrmRoadDistance(lat1, lon1, lat2, lon2) {
  *   route_type: string,
  *   duration_min: number|null,
  *   duration_text: string|null,
- *   straight_line_km: number
+ *   straight_line_km: number,
+ *   travelled_distance_km: number,
+ *   initial_distance_km: number
  * }>}
  */
 export async function calculateDistance({
@@ -135,9 +160,9 @@ export async function calculateDistance({
   const currentLongitude = Number(currentLng);
   const destinationLatitude = Number(destLat);
   const destinationLongitude = Number(destLng);
-  const alertDistKm = Number(alertDistance);
+  const alertDistKm = Math.max(0.1, Number(alertDistance) || 3.0);
 
-  // 1. Fast baseline straight-line distance (0ms latency!)
+  // 1. Instant baseline straight-line distance (0ms, 100% reliable)
   const straightKm = haversineDistanceKm(
     currentLatitude,
     currentLongitude,
@@ -145,58 +170,21 @@ export async function calculateDistance({
     destinationLongitude
   );
 
-  // 2. Fetch real road driving route directly from OSRM (~150ms)
-  const roadData = await fetchOsrmRoadDistance(
-    currentLatitude,
-    currentLongitude,
-    destinationLatitude,
-    destinationLongitude
-  );
-
-  if (roadData) {
-    const isAlert = roadData.distanceKm <= alertDistKm;
-    const durText = roadData.durationText ? ` (~${roadData.durationText})` : '';
-    const message = isAlert
-      ? `WAKE UP! Your destination is approximately ${roadData.distanceKm} km away${durText} (alert threshold: ${alertDistKm} km). Get ready to get down!`
-      : `On the way. You are ${roadData.distanceKm} km (road driving distance)${durText} from destination. Alarm will trigger at ${alertDistKm} km.`;
-
-    // Notify backend in background without awaiting or blocking UI
-    try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 3500);
-      fetch(`${BACKEND_URL}/calculate-distance`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          current_latitude: currentLatitude,
-          current_longitude: currentLongitude,
-          destination_latitude: destinationLatitude,
-          destination_longitude: destinationLongitude,
-          alert_distance: alertDistKm,
-          start_latitude: startLat != null ? Number(startLat) : undefined,
-          start_longitude: startLng != null ? Number(startLng) : undefined,
-        }),
-        signal: controller.signal,
-      })
-        .then(() => clearTimeout(timeoutId))
-        .catch(() => clearTimeout(timeoutId));
-    } catch (_) {}
-
-    return {
-      distance_km: roadData.distanceKm,
-      alert: isAlert,
-      message,
-      route_type: 'road',
-      duration_min: roadData.durationMin,
-      duration_text: roadData.durationText,
-      straight_line_km: straightKm,
-    };
+  // Calculate local travelled distance fallback
+  let localTravelledKm = 0.0;
+  if (startLat != null && startLng != null) {
+    localTravelledKm = haversineDistanceKm(
+      Number(startLat),
+      Number(startLng),
+      currentLatitude,
+      currentLongitude
+    );
   }
 
-  // 3. Fallback: Fast Backend request with 4s timeout if client OSRM was unavailable
+  // 2. Try Backend API first if reachable (handles OSRM road routing + travelled distance in one trip)
   try {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 4000);
+    const timeoutId = setTimeout(() => controller.abort(), 2800);
 
     const payload = {
       current_latitude: currentLatitude,
@@ -218,23 +206,68 @@ export async function calculateDistance({
 
     if (response.ok) {
       const backendResult = await response.json();
-      if (backendResult) return backendResult;
+      if (backendResult && Number.isFinite(backendResult.distance_km)) {
+        return {
+          distance_km: Math.max(0, Number(backendResult.distance_km)),
+          alert: Boolean(backendResult.alert),
+          message: backendResult.message || '',
+          route_type: backendResult.route_type || 'road',
+          duration_min: backendResult.duration_min != null ? Math.max(0, Number(backendResult.duration_min)) : null,
+          duration_text: backendResult.duration_text || '',
+          straight_line_km: Math.max(0, Number(backendResult.straight_line_km ?? straightKm)),
+          travelled_distance_km: Math.max(0, Number(backendResult.travelled_distance_km ?? localTravelledKm)),
+          initial_distance_km: backendResult.initial_distance_km != null ? Math.max(0, Number(backendResult.initial_distance_km)) : straightKm,
+        };
+      }
     }
-  } catch (_) {}
+  } catch (err) {
+    // Backend offline or slow network: continue to client fallback
+  }
 
-  // 4. Instant Haversine straight-line calculation (0ms, 100% reliable)
+  // 3. Client OSRM road driving fallback
+  const roadData = await fetchOsrmRoadDistance(
+    currentLatitude,
+    currentLongitude,
+    destinationLatitude,
+    destinationLongitude
+  );
+
+  if (roadData) {
+    const distKm = Math.max(0, roadData.distanceKm);
+    const isAlert = distKm <= alertDistKm;
+    const durText = roadData.durationText ? ` (~${roadData.durationText})` : '';
+    const message = isAlert
+      ? `WAKE UP! Your destination is approximately ${distKm} km away${durText} (alert threshold: ${alertDistKm} km). Get ready to get down!`
+      : `On the way. You are ${distKm} km (road driving distance)${durText} from destination. Alarm will trigger at ${alertDistKm} km.`;
+
+    return {
+      distance_km: distKm,
+      alert: isAlert,
+      message,
+      route_type: 'road',
+      duration_min: roadData.durationMin,
+      duration_text: roadData.durationText,
+      straight_line_km: straightKm,
+      travelled_distance_km: Math.max(0, localTravelledKm),
+      initial_distance_km: distKm,
+    };
+  }
+
+  // 4. Straight-line Haversine fallback (when routing services are unreachable or offline)
   const isAlert = straightKm <= alertDistKm;
   const estimatedMin = Math.round(straightKm * 2.0);
   return {
     distance_km: straightKm,
     alert: isAlert,
     message: isAlert
-      ? `WAKE UP! Your destination is approximately ${straightKm} km away (straight-line).`
-      : `On the way. You are ${straightKm} km from destination.`,
+      ? `WAKE UP! Your destination is approximately ${straightKm} km away (straight-line). Get ready to get down!`
+      : `On the way. You are ${straightKm} km (straight-line) from destination. Alarm will trigger at ${alertDistKm} km.`,
     route_type: 'straight_line',
     duration_min: estimatedMin,
     duration_text: `${estimatedMin} min`,
     straight_line_km: straightKm,
+    travelled_distance_km: Math.max(0, localTravelledKm),
+    initial_distance_km: straightKm,
   };
 }
 

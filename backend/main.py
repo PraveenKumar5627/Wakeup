@@ -170,6 +170,10 @@ def haversine_distance(lat1: float, lon1: float, lat2: float, lon2: float) -> fl
     """
     EARTH_RADIUS_KM = 6371.0
 
+    # If coordinates are identical or practically identical (< 5 meters apart)
+    if abs(lat1 - lat2) < 0.00005 and abs(lon1 - lon2) < 0.00005:
+        return 0.0
+
     # Convert decimal degrees to radians
     phi1 = math.radians(lat1)
     phi2 = math.radians(lat2)
@@ -185,10 +189,10 @@ def haversine_distance(lat1: float, lon1: float, lat2: float, lon2: float) -> fl
     # Handle potential floating point imprecision edge case where a > 1.0
     a = min(1.0, max(0.0, a))
 
-    c = 2.0 * math.atan2(math.sqrt(a), math.sqrt(1.0 - a))
+    c = 2.0 * math.atan2(math.sqrt(a), math.sqrt(max(0.0, 1.0 - a)))
     distance = EARTH_RADIUS_KM * c
 
-    return round(distance, 2)
+    return round(max(0.0, distance), 2)
 
 
 # -----------------------------------------------------------------------------

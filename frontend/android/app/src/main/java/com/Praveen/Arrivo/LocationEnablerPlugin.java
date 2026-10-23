@@ -88,6 +88,71 @@ public class LocationEnablerPlugin extends Plugin {
         }
     }
 
+    @PluginMethod
+    public void startTrackingService(PluginCall call) {
+        try {
+            String title = call.getString("title", "Arraivo Trip Active");
+            String text = call.getString("text", "Tracking your location to wake you up on time...");
+
+            Intent intent = new Intent(getContext(), TripTrackingService.class);
+            intent.setAction(TripTrackingService.ACTION_START);
+            intent.putExtra(TripTrackingService.EXTRA_TITLE, title);
+            intent.putExtra(TripTrackingService.EXTRA_TEXT, text);
+
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                getContext().startForegroundService(intent);
+            } else {
+                getContext().startService(intent);
+            }
+
+            JSObject ret = new JSObject();
+            ret.put("started", true);
+            call.resolve(ret);
+        } catch (Exception e) {
+            call.reject("Could not start tracking service: " + e.getMessage());
+        }
+    }
+
+    @PluginMethod
+    public void stopTrackingService(PluginCall call) {
+        try {
+            Intent intent = new Intent(getContext(), TripTrackingService.class);
+            intent.setAction(TripTrackingService.ACTION_STOP);
+            getContext().startService(intent);
+
+            JSObject ret = new JSObject();
+            ret.put("stopped", true);
+            call.resolve(ret);
+        } catch (Exception e) {
+            call.reject("Could not stop tracking service: " + e.getMessage());
+        }
+    }
+
+    @PluginMethod
+    public void updateTrackingNotification(PluginCall call) {
+        try {
+            String title = call.getString("title", "Arraivo Trip Active");
+            String text = call.getString("text", "Traveling to destination...");
+
+            Intent intent = new Intent(getContext(), TripTrackingService.class);
+            intent.setAction(TripTrackingService.ACTION_START);
+            intent.putExtra(TripTrackingService.EXTRA_TITLE, title);
+            intent.putExtra(TripTrackingService.EXTRA_TEXT, text);
+
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                getContext().startForegroundService(intent);
+            } else {
+                getContext().startService(intent);
+            }
+
+            JSObject ret = new JSObject();
+            ret.put("updated", true);
+            call.resolve(ret);
+        } catch (Exception e) {
+            call.reject("Could not update tracking notification: " + e.getMessage());
+        }
+    }
+
     private boolean checkIsLocationEnabled() {
         try {
             LocationManager lm = (LocationManager) getContext().getSystemService(Context.LOCATION_SERVICE);

@@ -398,34 +398,83 @@ function fetchRealGpsPosition(isNative) {
 
   // ---- start continuous watch ----
 
-  const startWatch = useCallback((onLocationUpdate, onWatchError) => {
-    // Clear any existing watcher first
-    if (watchIdRef.current !== null) {
-      if (isNative) {
-        Geolocation.clearWatch({ id: watchIdRef.current }).catch(() => {});
-      } else if (navigator.geolocation) {
-        navigator.geolocation.clearWatch(watchIdRef.current);
-      }
-      watchIdRef.current = null;
+  const watchIntervalRef = useRef(null);
+
+  // ---- start continuous watch ----
+
+  const stopWatch = useCallback(() => {
+    if (watchIntervalRef.current !== null) {
+      clearInterval(watchIntervalRef.current);
+      watchIntervalRef.current = null;
     }
+
+    const id = watchIdRef.current;
+    if (id !== null) {
+      watchIdRef.current = null;
+      if (isNative) {
+        Geolocation.clearWatch({ id }).catch(() => {});
+      } else if (navigator.geolocation) {
+        navigator.geolocation.clearWatch(id);
+      }
+    }
+
+    // Stop Android Foreground Service if running
+    if (isNative && LocationEnabler && typeof LocationEnabler.stopTrackingService === 'function') {
+      LocationEnabler.stopTrackingService().catch(() => {});
+    }
+  }, [isNative]);
+
+  const startWatch = useCallback((onLocationUpdate, onWatchError) => {
+    // Clear any existing watcher and interval first
+    stopWatch();
 
     const handleSuccess = (position) => {
       if (!position?.coords) return;
-      const { latitude: lat, longitude: lng } = position.coords;
-      if (!isMeaningfulFix(lat, lng)) return;
+      const { latitude: lat, longitude: lng, accuracy } = position.coords;
 
-      const ts = Date.now();
+      // Validate coordinates are valid numbers and inside legitimate GPS range
+      if (typeof lat !== 'number' || typeof lng !== 'number' || isNaN(lat) || isNaN(lng)) {
+        return;
+      }
+      if (lat < -90 || lat > 90 || lng < -180 || lng > 180) {
+        return;
+      }
+
+      // Check for stale or out-of-order updates
+      const ts = position.timestamp || Date.now();
+      if (ts < lastFixTimestampRef.current) {
+        return; // out-of-order stale fix, discard
+      }
+
+      // Check for sudden impossible GPS jump glitch (>5 km in < 5 seconds)
+      if (lastFixCoordsRef.current) {
+        const timeDiffSec = Math.max(1, (ts - lastFixTimestampRef.current) / 1000);
+        const distMeters = haversineMetres(
+          lastFixCoordsRef.current.lat,
+          lastFixCoordsRef.current.lng,
+          lat,
+          lng
+        );
+        const speedMps = distMeters / timeDiffSec;
+        // 100 m/s = 360 km/h. If jump is > 5 km and speed > 100 m/s with poor accuracy, reject glitch
+        if (distMeters > 5000 && speedMps > 100 && accuracy && accuracy > 300) {
+          console.warn('[useLocationPermission] Suppressed improbable GPS jump:', distMeters, 'm');
+          return;
+        }
+      }
+
       lastFixTimestampRef.current = ts;
-      lastFixCoordsRef.current = { lat, lng };
-      persistLocation(lat, lng);
+      lastFixCoordsRef.current = { lat, lng, accuracy };
 
-      setCurrentLocation({ lat, lng });
-      setLastUpdated(new Date(ts).toLocaleTimeString());
+      const timeStr = new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+
+      setCurrentLocation({ lat, lng, accuracy });
+      setLastUpdated(timeStr);
       setLocationFixStatus('ok');
       setLocationPermStatus('granted');
       setLocationError(null);
 
-      onLocationUpdate && onLocationUpdate({ lat, lng });
+      onLocationUpdate && onLocationUpdate({ lat, lng, accuracy, timestamp: ts, timeStr });
     };
 
     const handleError = (error) => {
@@ -452,9 +501,10 @@ function fetchRealGpsPosition(isNative) {
       onWatchError && onWatchError(msg);
     };
 
+    // 1. Continuous Watcher (high accuracy, live device sensor)
     if (isNative) {
       Geolocation.watchPosition(
-        { enableHighAccuracy: true, timeout: 20000, maximumAge: 5000 },
+        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 },
         (pos, err) => {
           if (err) handleError(err);
           else handleSuccess(pos);
@@ -464,30 +514,42 @@ function fetchRealGpsPosition(isNative) {
       }).catch((err) => {
         setLocationError(err?.message || 'Could not start GPS tracking.');
       });
+
+      // Start Android Foreground Service for background persistence
+      if (LocationEnabler && typeof LocationEnabler.startTrackingService === 'function') {
+        LocationEnabler.startTrackingService({
+          title: 'Arraivo Trip Active',
+          text: 'Tracking your location to wake you up on time...',
+        }).catch((e) => console.warn('[useLocationPermission] Foreground service notice:', e));
+      }
     } else if (navigator.geolocation) {
-      watchIdRef.current = navigator.geolocation.watchPosition(
-        handleSuccess,
-        handleError,
-        { enableHighAccuracy: true, timeout: 20000, maximumAge: 5000 }
-      );
+      try {
+        watchIdRef.current = navigator.geolocation.watchPosition(
+          handleSuccess,
+          handleError,
+          { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+        );
+      } catch (err) {
+        setLocationError('Could not start GPS tracking.');
+      }
     } else {
       setLocationError('Geolocation is not supported by this browser.');
     }
-  }, [isNative, isMeaningfulFix, buildErrorMsg]);
 
-  // ---- stop continuous watch ----
-
-  const stopWatch = useCallback(() => {
-    const id = watchIdRef.current;
-    if (id === null) return;
-    watchIdRef.current = null;
-
-    if (isNative) {
-      Geolocation.clearWatch({ id }).catch(() => {});
-    } else if (navigator.geolocation) {
-      navigator.geolocation.clearWatch(id);
-    }
-  }, [isNative]);
+    // 2. Exact 5-Second Interval Engine
+    // Ensures a reliable update approximately every 5 seconds even when device is stationary
+    watchIntervalRef.current = setInterval(async () => {
+      const elapsedSinceLastFix = Date.now() - lastFixTimestampRef.current;
+      if (elapsedSinceLastFix >= 4000 && !isFetchingRef.current) {
+        try {
+          const freshPos = await fetchRealGpsPosition(isNative);
+          handleSuccess(freshPos);
+        } catch (err) {
+          handleError(err);
+        }
+      }
+    }, 5000);
+  }, [isNative, stopWatch, buildErrorMsg]);
 
   // ---- lifecycle effects ----
 
@@ -626,6 +688,12 @@ function fetchRealGpsPosition(isNative) {
     }
   }, [isNative]);
 
+  const updateTrackingNotification = useCallback((title, text) => {
+    if (isNative && LocationEnabler && typeof LocationEnabler.updateTrackingNotification === 'function') {
+      LocationEnabler.updateTrackingNotification({ title, text }).catch(() => {});
+    }
+  }, [isNative]);
+
   return {
     locationPermStatus,
     locationFixStatus,
@@ -647,6 +715,7 @@ function fetchRealGpsPosition(isNative) {
     openLocationSettings,
     startWatch,
     stopWatch,
+    updateTrackingNotification,
     lastFixTimestampRef,
   };
 }

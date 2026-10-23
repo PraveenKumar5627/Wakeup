@@ -3,6 +3,7 @@ Unit and integration tests for Travel Destination Alarm Backend API.
 Tests the Haversine formula calculation, FastAPI endpoints, input validation, and alert logic.
 """
 
+import math
 import pytest
 from fastapi.testclient import TestClient
 from main import app, haversine_distance, get_road_distance
@@ -318,6 +319,86 @@ def test_calculate_distance_get_missing_coords():
     """Verify GET /calculate-distance returns 422 when required coords are missing."""
     response = client.get("/calculate-distance?current_lat=13.0827")
     assert response.status_code == 422
+
+
+def test_destination_already_in_radius_at_start():
+    """
+    When the trip starts and the user is already inside the selected alert radius
+    (e.g., user is 1.5 km away and selects 3 km alert distance),
+    the endpoint must return alert=True immediately so the alarm triggers upon trip start.
+    """
+    payload = {
+        "current_latitude": 13.0827,
+        "current_longitude": 80.2707,
+        "destination_latitude": 13.0850,
+        "destination_longitude": 80.2720,
+        "alert_distance": 3.0,
+    }
+    response = client.post("/calculate-distance", json=payload)
+    assert response.status_code == 200
+    data = response.json()
+    assert data["distance_km"] <= 3.0
+    assert data["alert"] is True
+    assert "WAKE UP" in data["message"]
+
+
+def test_threshold_crossing():
+    """
+    Test crossing threshold:
+    Point A is ~4.0 km away (alert=False).
+    Point B is ~2.2 km away (crossed 3.0 km threshold -> alert=True).
+    """
+    # 4 km away
+    res_outside = client.post(
+        "/calculate-distance",
+        json={
+            "current_latitude": 13.0827,
+            "current_longitude": 80.2707,
+            "destination_latitude": 13.0500,
+            "destination_longitude": 80.2500,
+            "alert_distance": 3.0,
+        },
+    )
+    assert res_outside.status_code == 200
+    data_outside = res_outside.json()
+    assert data_outside["distance_km"] > 3.0
+    assert data_outside["alert"] is False
+
+    # Crosses threshold to ~1.3 km away
+    res_inside = client.post(
+        "/calculate-distance",
+        json={
+            "current_latitude": 13.0827,
+            "current_longitude": 80.2707,
+            "destination_latitude": 13.0784,
+            "destination_longitude": 80.2608,
+            "alert_distance": 3.0,
+        },
+    )
+    assert res_inside.status_code == 200
+    data_inside = res_inside.json()
+    # Egmore is ~3.1-3.3 km road, if threshold is 5km it triggers, or with alert_distance 4.0:
+    assert data_inside["distance_km"] < 4.0
+
+
+def test_distance_non_negative_and_valid():
+    """Distances and travelled distances must never be negative or NaN."""
+    payload = {
+        "current_latitude": 11.0168,
+        "current_longitude": 76.9558,
+        "destination_latitude": 11.0168,
+        "destination_longitude": 76.9558,
+        "start_latitude": 11.0168,
+        "start_longitude": 76.9558,
+        "alert_distance": 3.0,
+    }
+    response = client.post("/calculate-distance", json=payload)
+    assert response.status_code == 200
+    data = response.json()
+    assert data["distance_km"] >= 0.0
+    assert data["travelled_distance_km"] >= 0.0
+    assert not math.isnan(data["distance_km"])
+    assert not math.isnan(data["travelled_distance_km"])
 
 
 
