@@ -628,6 +628,7 @@ export default function SelectDestinationScreen({
 
     if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
     if (!val.trim()) {
+      if (activeSearchAbortRef.current) activeSearchAbortRef.current.abort();
       setSuggestions([]);
       setShowSuggestions(false);
       setIsSearchingOnline(false);
@@ -642,6 +643,8 @@ export default function SelectDestinationScreen({
         setSuggestions(instantLocal);
       }
       setIsSearchingOnline(true);
+    } else {
+      setIsSearchingOnline(false);
     }
 
     debounceTimerRef.current = setTimeout(() => {
@@ -653,6 +656,9 @@ export default function SelectDestinationScreen({
   const handleSelectSuggestion = useCallback(
     (dest) => {
       if (!dest) return;
+      if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
+      if (activeSearchAbortRef.current) activeSearchAbortRef.current.abort();
+      setIsSearchingOnline(false);
 
       if (dest.isGoogle && dest.placeId && placesServiceRef.current && window.google?.maps) {
         placesServiceRef.current.getDetails(
@@ -697,6 +703,8 @@ export default function SelectDestinationScreen({
     async (queryText) => {
       const trimmed = (queryText || '').trim();
       if (!trimmed) return;
+      if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
+      if (activeSearchAbortRef.current) activeSearchAbortRef.current.abort();
 
       // 1. Direct coordinate check
       const parsedCoords = parseCoordinatesOrUrl(trimmed);
@@ -952,25 +960,21 @@ export default function SelectDestinationScreen({
       {/* Search Bar with Live Geocoding */}
       <div className="dest-search-bar-wrap" ref={searchInputWrapperRef}>
         <div className="dest-search-input-box">
-          {isSearchingOnline ? (
-            <Loader2 size={18} className="search-icon animate-spin text-blue-600" />
-          ) : (
-            <button
-              type="button"
-              className="search-submit-icon-btn"
-              onClick={() => {
-                if (suggestions.length > 0) {
-                  handleSelectSuggestion(suggestions[0]);
-                } else if (searchQuery.trim()) {
-                  executeImmediateSearch(searchQuery.trim());
-                }
-              }}
-              title="Search and pin destination"
-              aria-label="Search and pin destination"
-            >
-              <Search size={18} className="search-icon" />
-            </button>
-          )}
+          <button
+            type="button"
+            className="search-submit-icon-btn"
+            onClick={() => {
+              if (suggestions.length > 0) {
+                handleSelectSuggestion(suggestions[0]);
+              } else if (searchQuery.trim()) {
+                executeImmediateSearch(searchQuery.trim());
+              }
+            }}
+            title="Search and pin destination"
+            aria-label="Search and pin destination"
+          >
+            <Search size={18} className="search-icon" />
+          </button>
 
           <input
             id="input-search-destination"
@@ -998,20 +1002,65 @@ export default function SelectDestinationScreen({
               type="button"
               className="search-clear-btn"
               onClick={() => {
+                if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
+                if (activeSearchAbortRef.current) activeSearchAbortRef.current.abort();
                 setSearchQuery('');
                 setSuggestions([]);
                 setShowSuggestions(false);
+                setIsSearchingOnline(false);
               }}
               title="Clear search"
             >
               <X size={16} />
             </button>
           )}
+
+          {/* Centered Circular Loading Spinner */}
+          {isSearchingOnline && searchQuery.trim().length > 0 && (
+            <div className="dest-search-center-spinner-wrap" aria-hidden="true">
+              <svg
+                className="dest-center-spinner-svg"
+                width="28"
+                height="28"
+                viewBox="0 0 28 28"
+                fill="none"
+                xmlns="http://www.w3.org/2000/svg"
+              >
+                <circle
+                  className="dest-spinner-track"
+                  cx="14"
+                  cy="14"
+                  r="10.5"
+                  strokeWidth="3.5"
+                />
+                <circle
+                  className="dest-spinner-head"
+                  cx="14"
+                  cy="14"
+                  r="10.5"
+                  strokeWidth="3.5"
+                  strokeDasharray="40 26"
+                  strokeLinecap="round"
+                />
+              </svg>
+            </div>
+          )}
         </div>
+
+        {/* Bold LOADING text directly below the search input */}
+        {isSearchingOnline && searchQuery.trim().length > 0 && (
+          <div className="dest-search-loading-banner" aria-live="polite">
+            <span className="dest-search-loading-text">LOADING</span>
+          </div>
+        )}
 
         {/* Live Suggestions & Recent Searches Dropdown */}
         {showSuggestions && (
-          <div className="dest-suggestions-dropdown">
+          <div
+            className={`dest-suggestions-dropdown ${
+              isSearchingOnline && searchQuery.trim().length > 0 ? 'has-loading-banner' : ''
+            }`}
+          >
             {/* Show Recent Searches in Dropdown if input is empty */}
             {!searchQuery.trim() && recentSearches.length > 0 && (
               <>
@@ -1086,20 +1135,6 @@ export default function SelectDestinationScreen({
                   </React.Fragment>
                 );
               })}
-
-            {isSearchingOnline && suggestions.length > 0 && (
-              <div className="dest-suggestion-loading-more">
-                <Loader2 size={12} className="animate-spin text-blue-500 shrink-0" />
-                <span>Searching Google Maps & online places...</span>
-              </div>
-            )}
-
-            {isSearchingOnline && suggestions.length === 0 && (
-              <div className="dest-suggestion-loading-row">
-                <Loader2 size={15} className="animate-spin text-blue-600 shrink-0" />
-                <span>Searching Google Maps & places for "{searchQuery}"...</span>
-              </div>
-            )}
 
             {!isSearchingOnline && suggestions.length === 0 && searchQuery.trim().length >= 2 && (
               <div className="dest-suggestion-loading-row" style={{ color: '#64748B', fontWeight: 500 }}>

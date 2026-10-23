@@ -246,10 +246,10 @@ body[data-theme="dark"],
   transition: all 0.2s ease;
 }
 
-.text-input:focus {
+/* .text-input:focus {
   border-color: var(--accent-blue);
   box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.15);
-}
+} */
 
 .text-input::placeholder {
   color: var(--text-dim);
@@ -1688,12 +1688,12 @@ textarea::placeholder {
   color: #7A858A;
 }
 
-input:focus,
+/* input:focus,
 textarea:focus,
 select:focus {
   border-color: #00BFA6;
   box-shadow: 0 0 0 3px rgba(0, 191, 166, 0.14);
-}
+} */
 
 /* Links */
 a {
